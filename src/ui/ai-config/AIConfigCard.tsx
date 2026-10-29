@@ -74,10 +74,13 @@ export function AIConfigCard() {
   }, [reload]);
 
   /** 卡片与详情弹窗共用这一份「已排序的已配置模型」 */
-  const rows = useMemo(
+  /** 全部（含未生效连接里的）→ 给详情弹窗；卡片只显示生效连接里能用的那些 */
+  const allRows = useMemo(
     () => (catalog ? orderModels(configuredModels(catalog), order) : []),
     [catalog, order],
   );
+  const rows = useMemo(() => allRows.filter((row) => row.active), [allRows]);
+  const inactiveCount = allRows.length - rows.length;
 
   /**
    * 删一行（卡片与详情弹窗共用）：
@@ -204,7 +207,10 @@ export function AIConfigCard() {
       </div>
 
       <div className="ai-card-chips-label">
-        <span>{total === 0 ? '还没有配置任何模型' : `已配置 ${total} 个模型`}</span>
+        <span>
+          {total === 0 ? '还没有配置任何模型' : `已配置 ${total} 个模型`}
+          {inactiveCount > 0 ? `（另有 ${inactiveCount} 个在未生效的连接里）` : ''}
+        </span>
         <span className="ai-card-rule" aria-hidden="true" />
         <button
           type="button"
@@ -286,7 +292,7 @@ export function AIConfigCard() {
 
       <AIDetailDialog
         open={detailOpen}
-        rows={rows}
+        rows={allRows}
         catalog={catalog}
         roles={roles}
         onDismiss={() => setDetailOpen(false)}

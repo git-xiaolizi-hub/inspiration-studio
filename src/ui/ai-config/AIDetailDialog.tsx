@@ -151,7 +151,7 @@ export function AIDetailDialog({
                 {showLineBefore && <div className="ai-drop-line" aria-hidden="true" />}
                 <div
                   role="listitem"
-                  className={`ai-detail-row${dragging ? ' is-dragging' : ''}`}
+                  className={`ai-detail-row${dragging ? ' is-dragging' : ''}${row.active ? '' : ' is-inactive'}`}
                   data-model-key={row.key}
                   draggable
                   onDragStart={(event) => {
@@ -179,7 +179,10 @@ export function AIDetailDialog({
                   <span className="ai-row-name" title={row.modelId}>
                     {modelLabel(row)}
                   </span>
-                  <span className="ai-row-vendor">{row.providerName}</span>
+                  <span className="ai-row-vendor">
+                    {row.providerName}
+                    {row.active ? null : <em className="ai-row-off">未生效</em>}
+                  </span>
                   <span className="ai-badges">
                     {MODEL_CAPS.filter((cap) => row.caps.includes(cap)).map((cap) => (
                       <span className={`ai-badge ai-badge-${cap}`} key={cap}>
@@ -228,7 +231,7 @@ export function AIDetailDialog({
         拖动左侧把手改顺序；触屏没有 HTML5 拖拽，用每行的 ↑ ↓ 按钮同样能挪（效果一致）。
       </p>
       <p className="ai-detail-hint">
-        这里只列「当前生效的那条连接」里的模型（生成时用的也是它）。同一厂商存了第二条连接要先去「自由配置」切过去，模型才会出现在这里。
+        标「未生效」的模型在别的连接里：配置看得见，但生成时不会用到。要用它们，先去「自由配置」把那个厂商的当前连接切过去。
       </p>
     </Dialog>
   );

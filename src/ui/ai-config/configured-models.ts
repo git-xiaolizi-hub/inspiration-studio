@@ -31,6 +31,8 @@ export interface ConfiguredModel {
   modelId: string;
   displayName: string;
   caps: ModelCap[];
+  /** 是否属于该厂商「当前生效」的那条连接（生成时只用生效连接） */
+  active: boolean;
 }
 
 /** 目录 → 扁平的已配置模型（顺序 = 厂商顺序 + 表内顺序，未排序） */
@@ -38,22 +40,26 @@ export function configuredModels(catalog: AICatalog): ConfiguredModel[] {
   const rows: ConfiguredModel[] = [];
   for (const provider of catalog.providers) {
     if (isLocalProvider(provider)) continue;
-    const connection = activeConnectionOf(provider);
-    if (!connection || connection.baseUrl.trim() === '') continue;
-    for (const model of connection.models) {
-      if (model.enabled === false) continue;
-      const modelId = model.modelId.trim();
-      if (modelId === '') continue;
-      rows.push({
-        key: modelKeyOf(provider.id, connection.id, modelId),
-        providerId: provider.id,
-        providerName: provider.name,
-        connectionId: connection.id,
-        modelRowId: model.id,
-        modelId,
-        displayName: model.displayName.trim() === '' ? modelId : model.displayName,
-        caps: [...model.caps],
-      });
+    const active = activeConnectionOf(provider);
+    // 列出**所有**连接里的模型：只列生效连接会让用户以为第二把 Key 的模型丢了
+    for (const connection of provider.connections) {
+      if (connection.baseUrl.trim() === '') continue;
+      for (const model of connection.models) {
+        if (model.enabled === false) continue;
+        const modelId = model.modelId.trim();
+        if (modelId === '') continue;
+        rows.push({
+          key: modelKeyOf(provider.id, connection.id, modelId),
+          providerId: provider.id,
+          providerName: provider.name,
+          connectionId: connection.id,
+          modelRowId: model.id,
+          modelId,
+          displayName: model.displayName.trim() === '' ? modelId : model.displayName,
+          caps: [...model.caps],
+          active: active?.id === connection.id,
+        });
+      }
     }
   }
   return rows;

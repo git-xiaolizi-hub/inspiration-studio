@@ -161,6 +161,15 @@ async function mountCard(): Promise<void> {
   await waitFor(() => q('[data-block="model-vendors"]') !== null, '卡片渲染');
 }
 
+/**
+ * 打开「推荐配置」。弹窗会先读一次已有配置再渲染表单（避免异步回填把用户操作刷掉），
+ * 所以点完必须等 `.ai-rec-group` 出现，不能立刻查输入框。
+ */
+async function openRecommend(): Promise<void> {
+  await click(q('[data-testid="ai-card-recommend"]') as HTMLElement);
+  await waitFor(() => qa('.ai-rec-group').length > 0, '推荐配置表单渲染');
+}
+
 async function seedCatalog(catalog: AICatalog): Promise<void> {
   await putSetting({ key: 'ai-catalog', value: catalog, updatedAt: Date.now() });
 }
@@ -219,7 +228,7 @@ describe('A. 设置页 AI 配置卡', () => {
 describe('B. 推荐配置弹窗', () => {
   it('初始三组：DeepSeek / 方舟 / 灵绘两把 Key，共 4 把 Key、5 个模型', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await waitFor(() => text().includes('推荐配置'), '弹窗打开');
     expect(qa('.ai-rec-group')).toHaveLength(3);
     const urls = qa<HTMLInputElement>('.ai-rec-url').map((input) => input.value);
@@ -258,7 +267,7 @@ describe('B. 推荐配置弹窗', () => {
       }),
     );
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await waitFor(() => text().includes('推荐配置'), '弹窗打开');
 
     // 填一把 Key，否则测试按钮只会提示「先填 Key」
@@ -281,7 +290,7 @@ describe('B. 推荐配置弹窗', () => {
 
   it('四种方式各自记倍率：订阅填 0.05，切走再切回来还是 0.05', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await waitFor(() => text().includes('推荐配置'), '弹窗打开');
 
     const billing = () => q<HTMLButtonElement>('.ai-rec-billing') as HTMLButtonElement;
@@ -314,7 +323,7 @@ describe('B. 推荐配置弹窗', () => {
 
   it('「国外按量 → 中转站」切回来要还原用户填过的倍率（不是留下汇率）', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await waitFor(() => text().includes('推荐配置'), '弹窗打开');
 
     const billing = () => q<HTMLButtonElement>('.ai-rec-billing') as HTMLButtonElement;
@@ -347,7 +356,7 @@ describe('B. 推荐配置弹窗', () => {
   it('已经配过的连接：打开推荐配置直接回填，并标「已配置」', async () => {
     await seedCatalog(catalogTen());
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await waitFor(() => text().includes('推荐配置'), '弹窗打开');
     await waitFor(() => text().includes('已配置'), '回填完成');
 
@@ -361,7 +370,7 @@ describe('B. 推荐配置弹窗', () => {
   it('同一连接保存两次，不会长出第二条', async () => {
     await mountCard();
     const saveOnce = async () => {
-      await click(q('[data-testid="ai-card-recommend"]'));
+      await openRecommend();
       await waitFor(() => text().includes('推荐配置'), '弹窗打开');
       const keyInput = q<HTMLInputElement>('.ai-rec-key');
       if (!keyInput) throw new Error('找不到 Key 输入框');
@@ -402,7 +411,7 @@ describe('B. 推荐配置弹窗', () => {
     await seedCatalog(catalog);
 
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await waitFor(() => text().includes('已配置'), '回填完成');
 
     // 在灵绘那把 Key 上点「再加一把 Key」（第三组第一行，索引 2）
@@ -439,9 +448,57 @@ describe('B. 推荐配置弹窗', () => {
     expect(second?.models.map((model) => model.modelId)).toContain('gemini-4-argon');
   });
 
+  it('灵绘已有两把 Key（openai + anthropic）：原样再保存一次，两把的模型都不能掉', async () => {
+    let catalog = createDefaultCatalog();
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-image',
+      protocol: 'openai',
+      multiplier: 0.1,
+      billingMode: 'relay',
+      models: [
+        { id: 'm1', displayName: 'gpt-image-2.5-flare', modelId: 'gpt-image-2.5-flare', caps: ['image'], enabled: true },
+      ],
+    }).catalog;
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-claude',
+      protocol: 'anthropic',
+      multiplier: 1.1,
+      billingMode: 'relay',
+      models: [
+        { id: 'm2', displayName: 'claude-opus-5-5', modelId: 'claude-opus-5-5', caps: ['text'], enabled: true },
+      ],
+    }).catalog;
+    await seedCatalog(catalog);
+
+    await mountCard();
+    await openRecommend();
+    await waitFor(() => text().includes('已配置'), '回填完成');
+
+    // 打开后应该有两把 Key（不是只剩一把）
+    expect(qa('.ai-rec-key')).toHaveLength(4); // deepseek + 方舟 + 灵绘两把
+
+    const save = Array.from(document.querySelectorAll('button')).find((button) =>
+      (button.textContent ?? '').includes('保存这'),
+    ) as HTMLButtonElement | undefined;
+    await click(save as HTMLButtonElement);
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    const linghui = saved.providers.find((provider) => provider.id === 'linghui');
+    const conns = linghui?.connections ?? [];
+    expect(conns.map((item) => item.protocol).sort()).toEqual(['anthropic', 'openai']);
+    const claude = conns.find((item) => item.protocol === 'anthropic');
+    expect(claude?.models.map((model) => model.modelId)).toContain('claude-opus-5-5');
+    expect(claude?.apiKey).toBe('sk-claude');
+  });
+
   it('粘贴 url 后 500ms 内自动识别厂商（moonshot → 月之暗面 / Kimi）', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     const url = byLabel<HTMLInputElement>('服务地址 1');
     expect(url).not.toBeNull();
     await setValue(url as HTMLInputElement, 'https://api.moonshot.cn/v1');
@@ -456,7 +513,7 @@ describe('B. 推荐配置弹窗', () => {
 
   it('选「自定义」→ 多出一个名称输入框，且能选回内置厂商', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     await click(byLabel<HTMLButtonElement>('厂商 1') as HTMLButtonElement);
     const customOption = Array.from(document.querySelectorAll('.ai-rec-menu button')).find(
       (button) => (button.textContent ?? '').includes('自定义'),
@@ -482,7 +539,9 @@ describe('B. 推荐配置弹窗', () => {
 
   it('三层 ＋：组 +1、Key +1、模型 +1', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
+    // 弹窗要先读完已有配置才渲染表单（读之前显示「正在读取…」）
+    await waitFor(() => qa('.ai-rec-group').length === 3, '三组渲染');
     expect(qa('.ai-rec-group')).toHaveLength(3);
     // 新增一整组 = 地址 + 一条 Key + 一条模型
     await click(byLabel('再加一组'));
@@ -500,7 +559,7 @@ describe('B. 推荐配置弹窗', () => {
 
   it('删到边界时 × 禁用：最后一组 / 最后一把 Key / 最后一个模型', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
 
     // 模型：第 1 组只有 1 个模型 → 它的 × 一开始就是禁用的
     const modelDeletes = qa<HTMLButtonElement>('.ai-rec-model-line .ai-mini-del');
@@ -526,7 +585,7 @@ describe('B. 推荐配置弹窗', () => {
 
   it('全空时保存禁用；有 Key 时保存并跳过空行', async () => {
     await mountCard();
-    await click(q('[data-testid="ai-card-recommend"]'));
+    await openRecommend();
     const save = q<HTMLButtonElement>('[data-testid="ai-recommend-save"]');
     expect(save?.disabled).toBe(true);
 
@@ -539,6 +598,50 @@ describe('B. 推荐配置弹窗', () => {
     expect(text()).toContain('已保存 1 组连接（3 把 Key 空着被跳过）');
     // 卡片立刻刷新出了新模型（不用手动刷新）
     await waitFor(() => text().includes('已配置 1 个模型'), '卡片刷新');
+  });
+});
+
+describe('C0. 未生效连接的模型可见', () => {
+  it('第二把 Key 的模型不会消失：详情里列出来并标「未生效」，卡片另给数量', async () => {
+    let catalog = createDefaultCatalog();
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-image',
+      protocol: 'openai',
+      multiplier: 0.1,
+      billingMode: 'relay',
+      models: [
+        { id: 'm1', displayName: 'gpt-image-2.5-flare', modelId: 'gpt-image-2.5-flare', caps: ['image'], enabled: true },
+      ],
+    }).catalog;
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-claude',
+      protocol: 'anthropic',
+      multiplier: 1.1,
+      billingMode: 'relay',
+      models: [
+        { id: 'm2', displayName: 'claude-opus-5-5', modelId: 'claude-opus-5-5', caps: ['text'], enabled: true },
+      ],
+    }).catalog;
+    await seedCatalog(catalog);
+    await mountCard();
+
+    // 卡片：只统计生效连接，并提示另有 N 个
+    await waitFor(() => text().includes('已配置 1 个模型'), '生效模型计数');
+    expect(text()).toContain('另有 1 个在未生效的连接里');
+
+    await click(q('.ai-chip-more, .ai-detail-open, [data-testid="ai-card-detail"]'));
+    await waitFor(() => text().includes('已配置的模型'), '详情弹窗');
+
+    // 详情：两条连接的两个模型都在，且 claude 标了「未生效」
+    const rows = qa('.ai-detail-row');
+    expect(rows).toHaveLength(2);
+    expect(text()).toContain('claude-opus-5-5');
+    expect(text()).toContain('未生效');
+    expect(qa('.ai-detail-row.is-inactive')).toHaveLength(1);
   });
 });
 
