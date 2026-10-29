@@ -39,14 +39,11 @@ describe('空壳路由可正常渲染', () => {
     expect(renderAt('')).toContain('记录列表');
   });
 
-  it('/ai-config 渲染 AI 配置页', () => {
-    // M1 时这条断言锁的是占位文案「M3 实现」；M3 已实现页面，占位文案随之消失，
-    // 因此改为断言实现后的真实内容（报告 §4.1 记录了这一处既有断言的更新）。
-    // M3R 又把「厂商预设按钮」改成「厂商 tab + 连接 + 模型表」，所以这里的
-    // 「厂商预设」随之换成「厂商」（见 M3R-REPORT §删改断言清单）。
+  it('/ai-config 老地址重定向到设置页（配置入口已并入「配置模型」弹窗）', () => {
+    // R7d：不再有独立的「自由配置」页，老书签不该 404，直接落到设置页
     const text = renderAt('#/ai-config');
     expect(text).toContain('AI 配置');
-    expect(text).toContain('厂商');
+    expect(text).toContain('配置模型');
   });
 
   it('/model-guide 渲染选型文档页（含最后更新与视频算例）', () => {

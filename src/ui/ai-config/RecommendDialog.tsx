@@ -1,8 +1,9 @@
 /**
- * 「推荐配置」弹窗（R7b §B）。
+ * 「配置模型」弹窗（R7d：与原来的「自由配置」页合并成一个入口）。
  *
- * 三组最常见的搭配已经填好地址与模型名，用户只需要补 Key。
- * 结构是三层树：组（base_url）→ Key（协议 / 倍率）→ 模型。
+ * 打开时载入**全部已有配置**（按「厂商 + 地址」聚合成组），一条都没有时给一条空地址。
+ * 顶部「推荐配置」按钮把三组常用搭配**插到最上面**（已有的组不会重复生成，只补齐缺的 Key）。
+ * 结构是三层树：组（base_url）→ Key（协议 / 倍率）→ 模型；组可以拖拽排序。
  *
  * 三层增删的边界（任务书 §B.4，逐条实现）：
  * - 删组：至少保留一组；
@@ -22,6 +23,9 @@ import {
   VENDOR_META,
   addConnection,
   createCustomProvider,
+  groupKeyOf,
+  isLocalProvider,
+  removeConnection,
   loadCatalog,
   makeId,
   parseMultiplier,
@@ -35,6 +39,7 @@ import type {
   BillingMode,
   AICatalog,
   BuiltinProviderId,
+  Connection,
   ModelEntry,
   ProviderProtocol,
 } from '../../adapters/ai-models/catalog';
@@ -76,12 +81,17 @@ interface DraftKey {
 
 interface DraftGroup {
   id: string;
-  vendor: VendorChoice;
+  /** '' = 还没选厂商（空组的初始状态） */
+  vendor: VendorChoice | '';
   /** vendor === 'custom' 时用户自己写的厂商名 */
   customName: string;
   baseUrl: string;
-  /** 组标题（只有三组初始搭配有；新增组显示「新的一组」） */
+  /** 组标题（默认空：标题一律用厂商名，不再写「写作用 · xxx」这类小字） */
   title?: string;
+  /** 从已有配置载入时记下 provider（自定义厂商保存时不能重复建厂商） */
+  providerId?: string;
+  /** 排序键：`groupKeyOf(providerId, baseUrl)`，保存时写进 catalog.groupOrder */
+  orderKey?: string;
   /** 已经配过这条连接（进弹窗时从已有配置回填）：界面上标「已配置」 */
   existingConnectionId?: string;
   keys: DraftKey[];
@@ -111,6 +121,7 @@ const PROTOCOL_OPTIONS: readonly RecMenuOption[] = [
 
 /** 厂商：内置厂商 + 自定义（原生 select 的弹层没法样式化，所以也走 RecMenu） */
 const VENDOR_OPTIONS: readonly RecMenuOption[] = [
+  { value: '', label: '选择厂商', hint: '先选厂商，地址与模型候选会跟着变；粘贴地址也会自动认出来' },
   ...BUILTIN_PROVIDER_ORDER.map((id) => ({
     value: id,
     label: shortVendorName(VENDOR_META[id].name),
@@ -185,72 +196,190 @@ function normalizeUrl(raw: string): string {
   return raw.trim().toLowerCase().replace(/\/+$/, '');
 }
 
-/**
- * 已经配过的用户不该再填一遍：同一厂商 + 同一 base_url 的连接直接回填进草稿。
- * 一条连接 = 一把 Key（中转站里 claude 与生图可能各一把），匹配到的都映射进来。
- */
-function seedGroup(base: DraftGroup, catalog: AICatalog | null): DraftGroup {
-  if (!catalog) return base;
-  const provider = catalog.providers.find((item) => item.id === base.vendor);
-  if (!provider) return base;
-  const want = normalizeUrl(base.baseUrl);
-  const matched = provider.connections.filter(
-    (item) => normalizeUrl(item.baseUrl) === want && item.apiKey.trim() !== '',
-  );
-  if (matched.length === 0) return base;
+/** 一条连接 → 草稿里的一把 Key（含协议 / 计费方式 / 每种方式的倍率） */
+function keyFromConnection(connection: Connection): DraftKey {
   return {
-    ...base,
-    existingConnectionId: matched[0].id,
-    keys: matched.map((item) => ({
-      id: makeId('dk'),
-      connectionId: item.id,
-      apiKey: item.apiKey,
-      protocol: item.protocol ?? 'openai',
-      multiplier: String(item.multiplier ?? 1),
-      billingMode: item.billingMode ?? 'relay',
-      modeMultipliers: item.modeMultipliers
-        ? Object.fromEntries(
-            Object.entries(item.modeMultipliers).map(([mode, value]) => [mode, String(value)]),
-          )
-        : undefined,
-      models: (item.models.length > 0 ? item.models : [{ modelId: '' }]).map((model) => ({
-        id: makeId('dm'),
-        modelId: model.modelId,
-      })),
+    id: makeId('dk'),
+    connectionId: connection.id,
+    apiKey: connection.apiKey,
+    protocol: connection.protocol ?? 'openai',
+    multiplier: String(connection.multiplier ?? 1),
+    billingMode: connection.billingMode ?? 'relay',
+    modeMultipliers: connection.modeMultipliers
+      ? Object.fromEntries(
+          Object.entries(connection.modeMultipliers).map(([mode, value]) => [mode, String(value)]),
+        )
+      : undefined,
+    models: (connection.models.length > 0 ? connection.models : [{ modelId: '' }]).map((model) => ({
+      id: makeId('dm'),
+      modelId: model.modelId,
     })),
   };
 }
 
+/** 一条配置都没有时给的空组：一个空地址、一把空 Key、一个空模型 */
+function blankGroup(): DraftGroup {
+  return {
+    id: makeId('grp'),
+    vendor: '',
+    customName: '',
+    baseUrl: '',
+    keys: [newKey([''], 'openai', String(DEFAULT_MULTIPLIER), 'relay')],
+  };
+}
+
+/**
+ * 打开弹窗时的草稿 = **现有配置的全部内容**。
+ * 按「厂商 + 地址」聚合成组：同一地址的多把 Key 就在同一组里（中转站常见）。
+ * 顺序按 `catalog.groupOrder`（用户上次拖出来的顺序），表里没有的排在后面。
+ */
 export function initialDraft(catalog: AICatalog | null = null): DraftGroup[] {
+  if (!catalog) return [blankGroup()];
+  const rows: DraftGroup[] = [];
+  for (const provider of catalog.providers) {
+    if (isLocalProvider(provider)) continue;
+    const byUrl = new Map<string, Connection[]>();
+    for (const connection of provider.connections) {
+      if (connection.baseUrl.trim() === '') continue;
+      const url = normalizeUrl(connection.baseUrl);
+      byUrl.set(url, [...(byUrl.get(url) ?? []), connection]);
+    }
+    for (const [url, connections] of byUrl) {
+      rows.push({
+        id: makeId('grp'),
+        vendor: (provider.builtin ? provider.id : CUSTOM) as VendorChoice,
+        providerId: provider.id,
+        customName: provider.builtin ? '' : provider.name,
+        baseUrl: connections[0].baseUrl,
+        existingConnectionId: connections[0].id,
+        orderKey: groupKeyOf(provider.id, url),
+        keys: connections.map(keyFromConnection),
+      });
+    }
+  }
+  if (rows.length === 0) return [blankGroup()];
+  const order = catalog.groupOrder ?? [];
+  return rows
+    .map((group, index) => ({ group, index }))
+    .sort((a, b) => {
+      const ra = order.indexOf(a.group.orderKey ?? '');
+      const rb = order.indexOf(b.group.orderKey ?? '');
+      const na = ra < 0 ? Number.MAX_SAFE_INTEGER : ra;
+      const nb = rb < 0 ? Number.MAX_SAFE_INTEGER : rb;
+      return na === nb ? a.index - b.index : na - nb;
+    })
+    .map((row) => row.group);
+}
+
+/**
+ * 三组推荐搭配（「推荐配置」按钮的内容）。
+ *
+ * 灵绘一组三把 Key：生图（OpenAI）/ gemini（OpenAI，另一个分组倍率）/ opus（Anthropic）。
+ * 同一把 Key 里能挂多厂商模型是存在的，但这里按**分组倍率不同**分开写，用户改倍率时不会互相影响。
+ */
+export function recommendedGroups(): DraftGroup[] {
   return [
     {
-      id: 'grp-writing',
+      id: makeId('grp'),
       vendor: 'deepseek',
       customName: '',
       baseUrl: 'https://api.deepseek.com',
-      title: '写作用 · DeepSeek 官方',
       keys: [newKey(['deepseek-flash'], 'openai', '1', 'domestic')],
     },
     {
-      id: 'grp-video',
+      id: makeId('grp'),
       vendor: 'ark',
       customName: '',
       baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-      title: '生视频用 · 火山方舟（豆包）',
       keys: [newKey(['doubao-seedance-2-5-260628'], 'openai', '1', 'domestic')],
     },
     {
-      id: 'grp-image',
+      id: makeId('grp'),
       vendor: 'linghui',
       customName: '',
       baseUrl: 'https://xn--ai-xg4e312c.com',
-      title: '生图 + 备用写作 · 灵绘中转站',
       keys: [
         newKey(['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'], 'openai', '0.1', 'relay'),
+        newKey(['gemini-4-carbon'], 'openai', '0.25', 'relay'),
         newKey(['claude-opus-5-5'], 'anthropic', '1.1', 'relay'),
       ],
     },
-  ].map((group) => seedGroup(group as DraftGroup, catalog));
+  ];
+}
+
+/** 拖拽排序的纯函数：把 from 挪到 to 的位置（不存在时原样返回） */
+export function reorderGroups(draft: DraftGroup[], fromId: string, toId: string): DraftGroup[] {
+  const from = draft.findIndex((group) => group.id === fromId);
+  const to = draft.findIndex((group) => group.id === toId);
+  if (from < 0 || to < 0 || from === to) return draft;
+  const next = [...draft];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+function isBlankGroup(group: DraftGroup): boolean {
+  return (
+    group.baseUrl.trim() === '' && group.keys.every((key) => key.apiKey.trim() === '')
+  );
+}
+
+/** 同一个组？= 同一厂商 + 同一地址（地址归一化后比较） */
+function sameGroup(a: DraftGroup, b: DraftGroup): boolean {
+  if (normalizeUrl(a.baseUrl) !== normalizeUrl(b.baseUrl)) return false;
+  const left = a.providerId ?? a.vendor;
+  const right = b.providerId ?? b.vendor;
+  return left === '' || right === '' || left === right;
+}
+
+/**
+ * 把模板合进已有的一组：缺的 Key 追加（留空让用户填），已有的 Key 补上模板里多出来的模型。
+ * 用户填过的 Key / 倍率一律不动。
+ */
+function mergeTemplate(group: DraftGroup, template: DraftGroup): DraftGroup {
+  const keys = [...group.keys];
+  for (const templateKey of template.keys) {
+    const wantedIds = templateKey.models.map((model) => model.modelId);
+    const hit = keys.find((key) => key.models.some((model) => wantedIds.includes(model.modelId)));
+    if (!hit) {
+      keys.push({
+        ...templateKey,
+        id: makeId('dk'),
+        apiKey: '',
+        models: templateKey.models.map((model) => ({ ...model, id: makeId('dm') })),
+      });
+      continue;
+    }
+    const known = new Set(hit.models.map((model) => model.modelId));
+    const extra = templateKey.models.filter((model) => !known.has(model.modelId));
+    if (extra.length > 0) {
+      const at = keys.indexOf(hit);
+      keys[at] = {
+        ...hit,
+        models: [...hit.models, ...extra.map((model) => ({ ...model, id: makeId('dm') }))],
+      };
+    }
+  }
+  return { ...group, keys };
+}
+
+/**
+ * 「推荐配置」按钮：三组推荐**插到最上面**（deepseek → 火山 → 灵绘），
+ * 已经配过的组不重复生成，只补齐缺的 Key/模型。
+ */
+export function withRecommended(draft: DraftGroup[]): DraftGroup[] {
+  const rest = draft.filter((group) => !isBlankGroup(group));
+  const head: DraftGroup[] = [];
+  for (const template of recommendedGroups()) {
+    const at = rest.findIndex((group) => sameGroup(group, template));
+    if (at < 0) {
+      head.push(template);
+      continue;
+    }
+    const [hit] = rest.splice(at, 1);
+    head.push(mergeTemplate(hit, template));
+  }
+  return [...head, ...rest];
 }
 
 /** 下拉里放短名：124px 的格子塞不下「火山方舟（豆包）」，括号里的补充信息放到 title */
@@ -259,14 +388,18 @@ function shortVendorName(name: string): string {
 }
 
 function vendorNameOf(group: DraftGroup): string {
+  if (group.providerId && group.vendor === CUSTOM) return group.customName.trim() || '自定义厂商';
+  if (group.vendor === '') return group.customName.trim() || '新的配置';
   if (group.vendor === CUSTOM) return group.customName.trim() || '自定义厂商';
   return VENDOR_META[group.vendor].name;
 }
 
 function providerLike(group: DraftGroup, providerId?: string) {
-  return group.vendor === CUSTOM
-    ? { id: providerId ?? 'custom:new', builtin: false }
-    : { id: group.vendor, builtin: true };
+  const id = providerId ?? group.providerId;
+  if (group.vendor === CUSTOM || group.vendor === '') {
+    return { id: id ?? 'custom:new', builtin: false };
+  }
+  return { id: group.vendor, builtin: true };
 }
 
 /** 某个模型 id 在厂商预设里的定义（名字 / 能力 / 价格都照抄名录，不编） */
@@ -342,6 +475,10 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   const dirtyRef = useRef(false);
   /** 已有配置读完之前不渲染表单：否则回填会把用户刚展开的菜单刷掉 */
   const [seeded, setSeeded] = useState(false);
+  /** 打开时库里有哪些连接：保存时用来判断「草稿里没了的」要删掉 */
+  const loadedIds = useRef<Set<string>>(new Set());
+  /** 正在拖的组（拖拽排序） */
+  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
   /**
    * 汇率是异步到的：用户点「国外按量」时可能还是兜底的 6.8。
    * 等真汇率回来，把「还停在 6.8 这个默认值」的行改成真汇率；用户自己改过的数字一律不动。
@@ -389,6 +526,9 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     void loadCatalog().then((catalog) => {
       if (!alive) return;
       // 读完再放行：用户在读之前不可能开始填，也就不存在「回填冲掉输入」
+      loadedIds.current = new Set(
+        catalog.providers.flatMap((provider) => provider.connections.map((item) => item.id)),
+      );
       setDraft(initialDraft(catalog));
       setSeeded(true);
     });
@@ -408,10 +548,36 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     () => draft.reduce((sum, group) => sum + group.keys.filter((key) => key.apiKey.trim() !== '').length, 0),
     [draft],
   );
+  /** 草稿里已经删掉、保存时要从库里移除的连接数（决定「保存」能不能点） */
+  const pendingRemovals = useMemo(() => {
+    const present = new Set(
+      draft.flatMap((group) =>
+        group.keys
+          .map((key) => key.connectionId)
+          .filter((id): id is string => typeof id === 'string' && id !== ''),
+      ),
+    );
+    return [...loadedIds.current].filter((id) => !present.has(id)).length;
+  }, [draft]);
+
   const skippedKeys = useMemo(
     () => draft.reduce((sum, group) => sum + group.keys.filter((key) => key.apiKey.trim() === '').length, 0),
     [draft],
   );
+
+  /** 「推荐配置」：把三组常用搭配插到最上面（已有的组只补齐缺的 Key/模型） */
+  const applyRecommended = useCallback(() => {
+    dirtyRef.current = true;
+    setDraft((current) => withRecommended(current));
+    setSeeded(true);
+  }, []);
+
+  /** 拖拽排序：把 from 组挪到 to 组的位置 */
+  const moveGroup = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    dirtyRef.current = true;
+    setDraft((current) => reorderGroups(current, fromId, toId));
+  }, []);
 
   const patchGroup = useCallback((groupId: string, patch: (group: DraftGroup) => DraftGroup) => {
     // 用户只要动过草稿，后面异步读回来的「已有配置」就不能再覆盖它
@@ -562,61 +728,107 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   }
 
   async function handleSave(): Promise<void> {
-    if (filledKeys === 0) return;
+    if (filledKeys === 0 && pendingRemovals === 0) return;
     setSaving(true);
     setError(null);
     try {
       let catalog: AICatalog = await loadCatalog();
       let savedGroups = 0;
+      const kept = new Set<string>();
+      const order: string[] = [];
 
       for (const group of draft) {
-        const filled = group.keys.filter((key) => key.apiKey.trim() !== '');
         const baseUrl = group.baseUrl.trim();
-        if (filled.length === 0 || baseUrl === '') continue;
+        // 空着的 Key 只要本来就在库里，就当「保留」（用户可能只想改模型/倍率）
+        for (const key of group.keys) {
+          if (key.apiKey.trim() === '' && key.connectionId) kept.add(key.connectionId);
+        }
+        if (baseUrl === '') continue;
+        const filled = group.keys.filter((key) => key.apiKey.trim() !== '');
+        if (filled.length === 0) {
+          if (group.providerId) order.push(groupKeyOf(group.providerId, baseUrl));
+          continue;
+        }
 
-        let providerId: string = group.vendor;
-        if (group.vendor === CUSTOM) {
+        let providerId = group.providerId ?? (group.vendor === CUSTOM || group.vendor === '' ? '' : group.vendor);
+        let pending = filled;
+
+        // 自定义厂商还不存在：先建厂商 + 第一条连接，再补其余的 Key
+        if (providerId === '') {
           const name = vendorNameOf(group);
           const created = createCustomProvider(catalog, {
             name,
             baseUrl,
-            apiKey: filled[0].apiKey,
+            apiKey: filled[0].apiKey.trim(),
             template: 'relay',
           });
           catalog = created.catalog;
           providerId = created.provider.id;
-          // 模板连接先按第一把 Key 改写（协议 / 倍率 / 模型都取自用户填的）
-          catalog = updateConnection(catalog, providerId, created.provider.connections[0].id, {
+          const first = created.provider.connections[0];
+          catalog = updateConnection(catalog, providerId, first.id, {
             label: name,
             baseUrl,
             apiKey: filled[0].apiKey.trim(),
             protocol: filled[0].protocol,
             multiplier: multiplierOfText(filled[0].multiplier),
+            billingMode: filled[0].billingMode,
+            modeMultipliers: collectModeMultipliers(filled[0]),
             models: filled[0].models.map((model) => entryFor(group, model.modelId)).filter(isRealModel),
           });
-          for (const key of filled.slice(1)) {
-            catalog = appendKey(catalog, providerId, group, key);
-          }
-        } else {
-          for (const key of filled) {
-            catalog = appendKey(catalog, providerId, group, key);
-          }
+          kept.add(first.id);
+          pending = filled.slice(1);
         }
+
+        if (providerId === '') continue;
+        for (const key of pending) {
+          const result = appendKey(catalog, providerId, group, key);
+          catalog = result.catalog;
+          kept.add(result.connectionId);
+        }
+        order.push(groupKeyOf(providerId, baseUrl));
         savedGroups += 1;
       }
 
-      if (savedGroups === 0) {
-        setError('没有可保存的连接：每组都需要填一个 Key');
+      // 用户点了 ×：草稿里已经没有的连接，从配置里删掉
+      const stale = [...loadedIds.current].filter((id) => !kept.has(id));
+      if (stale.length > 0) {
+        for (const provider of catalog.providers) {
+          for (const connection of [...provider.connections]) {
+            if (stale.includes(connection.id)) {
+              catalog = removeConnection(catalog, provider.id, connection.id);
+            }
+          }
+        }
+      }
+      // 顺序按草稿（拖出来的）来，**所有填了地址的组**都记，不管 Key 填没填
+      const orderAll: string[] = [];
+      for (const group of draft) {
+        const baseUrl = group.baseUrl.trim();
+        if (baseUrl === '') continue;
+        const providerId =
+          group.providerId ??
+          (group.vendor !== '' && group.vendor !== CUSTOM
+            ? group.vendor
+            : catalog.providers.find((provider) =>
+                provider.connections.some(
+                  (connection) => normalizeUrl(connection.baseUrl) === normalizeUrl(baseUrl),
+                ),
+              )?.id ?? '');
+        if (providerId !== '') orderAll.push(groupKeyOf(providerId, baseUrl));
+      }
+      catalog = { ...catalog, groupOrder: orderAll };
+
+      if (savedGroups === 0 && stale.length === 0 && pendingRemovals === 0) {
+        setError('没有可保存的连接：至少填一把 Key');
         setSaving(false);
         return;
       }
 
       await saveCatalog(catalog);
-      const message =
-        skippedKeys > 0
-          ? `已保存 ${savedGroups} 组连接（${skippedKeys} 把 Key 空着被跳过）`
-          : `已保存 ${savedGroups} 组连接`;
-      await onSaved(message);
+      const parts = [`已保存 ${savedGroups} 组连接`];
+      if (stale.length > 0) parts.push(`删掉 ${stale.length} 条`);
+      if (skippedKeys > 0) parts.push(`${skippedKeys} 把 Key 空着被跳过`);
+      await onSaved(parts.join('，'));
     } catch (caught) {
       setError(describeError(caught));
     } finally {
@@ -635,7 +847,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   return (
     <Dialog
       open={open}
-      title="推荐配置"
+      title="配置模型"
       maxWidth={860}
       scrollBody
       bodyClassName="ai-rec-body"
@@ -643,18 +855,29 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       actions={[
         { label: '取消', onClick: onClose },
         {
-          label: `保存这 ${draft.length} 组连接`,
+          label: '保存',
           kind: 'primary',
           onClick: () => void handleSave(),
-          disabled: filledKeys === 0 || saving,
+          disabled: (filledKeys === 0 && pendingRemovals === 0) || saving,
           testId: 'ai-recommend-save',
         },
       ]}
     >
-      <p className="modal-sub">
-        下面三组是最常见的搭配，已经替你填好地址与模型名——<b>只有 Key 需要你自己填</b>
-        。填完点保存，写作、生图、生视频就都能用了。
-      </p>
+      <div className="ai-rec-head">
+        <p className="modal-sub">
+          一行是一个地址，同一个地址可以挂多把 Key（中转站常见：一把生图、一把 claude）。
+        </p>
+        <button type="button" className="ai-rec-recommend" onClick={applyRecommended}>
+          推荐配置
+        </button>
+      </div>
+      <ul className="ai-rec-why">
+        <li><b>deepseek</b>：性价比高、易用、快速的文本模型，适合日常使用</li>
+        <li><b>seedance</b>：当前业界领先的视频生成模型，复杂真人与自然画面刚需</li>
+        <li><b>gpt-image</b>：当前最好的生图模型，flare 生图，sunburst 改图</li>
+        <li><b>gemini</b>：更好的智力，更强的写作</li>
+        <li><b>opus</b>：更好的智力，提示词设计、代码做视频</li>
+      </ul>
       <div className="ai-regs">
         {links.map((link) => (
           <a key={link.label} href={link.url} target="_blank" rel="noreferrer">
@@ -674,10 +897,37 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
           ]),
         );
         return (
-          <div className="ai-rec-group" key={group.id} data-group-index={groupIndex}>
+          <div
+            className={`ai-rec-group${draggingGroupId === group.id ? ' is-dragging' : ''}`}
+            key={group.id}
+            data-group-index={groupIndex}
+            onDragOver={(event) => {
+              if (draggingGroupId && draggingGroupId !== group.id) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggingGroupId) moveGroup(draggingGroupId, group.id);
+              setDraggingGroupId(null);
+            }}
+          >
             <div className="ai-rec-group-head">
+              <button
+                type="button"
+                className="ai-rec-grip"
+                title="拖动调整顺序（用不到的往下拖）"
+                aria-label={`拖动第 ${groupIndex + 1} 组`}
+                draggable
+                onDragStart={(event) => {
+                  setDraggingGroupId(group.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', group.id);
+                }}
+                onDragEnd={() => setDraggingGroupId(null)}
+              >
+                ⋮⋮
+              </button>
               <span className="ai-rec-dot" aria-hidden="true" />
-              {group.title ?? `新的一组 · ${vendorNameOf(group)}`}
+              {group.title ?? vendorNameOf(group)}
               {group.existingConnectionId ? <span className="ai-rec-tag">已配置</span> : null}
             </div>
 
@@ -763,7 +1013,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                         autoComplete="off"
                         spellCheck={false}
                         value={key.apiKey}
-                        placeholder={`填入 ${shortVendorName(vendorNameOf(group))} 的 Key`}
+                        placeholder={group.vendor === '' ? '填入 API Key' : `填入 ${shortVendorName(vendorNameOf(group))} 的 Key`}
                         onChange={(event) =>
                           updateKey(group.id, key.id, (item) => ({ ...item, apiKey: event.target.value }))
                         }
@@ -1005,7 +1255,9 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
         </table>
       </div>
 
-      {filledKeys === 0 && <p className="ai-rec-warn">至少要填一把 Key</p>}
+      {filledKeys === 0 && pendingRemovals === 0 ? (
+        <p className="ai-rec-hint">填一把 Key 就能保存；也可以点右上角「推荐配置」自动填好常用的三组。</p>
+      ) : null}
       {filledKeys > 0 && skippedKeys > 0 && (
         <p className="ai-rec-warn">Key 空着的 {skippedKeys} 行保存时会跳过</p>
       )}
@@ -1056,7 +1308,7 @@ function appendKey(
   providerId: string,
   group: DraftGroup,
   key: DraftKey,
-): AICatalog {
+): { catalog: AICatalog; connectionId: string } {
   const wanted = key.models.map((model) => entryFor(group, model.modelId)).filter(isRealModel);
   const provider = catalog.providers.find((item) => item.id === providerId);
   const sameUrl = normalizeUrl(group.baseUrl);
@@ -1072,7 +1324,7 @@ function appendKey(
     ? provider?.connections.find((item) => item.id === key.connectionId)
     : undefined;
   if (origin) {
-    return updateConnection(catalog, providerId, origin.id, {
+    const next = updateConnection(catalog, providerId, origin.id, {
       baseUrl: group.baseUrl.trim(),
       apiKey,
       protocol: key.protocol,
@@ -1081,6 +1333,7 @@ function appendKey(
       modeMultipliers: collectModeMultipliers(key),
       models: mergedModels(origin.models),
     });
+    return { catalog: next, connectionId: origin.id };
   }
 
   // ② 同一把 Key 又存了一次：只补缺的模型
@@ -1093,14 +1346,15 @@ function appendKey(
       )
     : undefined;
   if (sameKey) {
-    return updateConnection(catalog, providerId, sameKey.id, {
+    const next = updateConnection(catalog, providerId, sameKey.id, {
       modeMultipliers: collectModeMultipliers(key),
       models: mergedModels(sameKey.models),
     });
+    return { catalog: next, connectionId: sameKey.id };
   }
 
   // ③ 新的一把 Key（同地址、同协议也可能有多把）
-  return addConnection(catalog, providerId, {
+  const created = addConnection(catalog, providerId, {
     label: vendorNameOf(group),
     baseUrl: group.baseUrl.trim(),
     apiKey,
@@ -1109,5 +1363,6 @@ function appendKey(
     billingMode: key.billingMode,
     modeMultipliers: collectModeMultipliers(key),
     models: wanted,
-  }).catalog;
+  });
+  return { catalog: created.catalog, connectionId: created.connection.id };
 }

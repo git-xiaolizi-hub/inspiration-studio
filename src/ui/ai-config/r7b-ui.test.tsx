@@ -12,7 +12,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIConfigCard } from './AIConfigCard';
 import { AI_CONFIG_CARD_MAX_FLAT, moveModelKey, nudgeModelKey } from './detail-order';
-import { initialDraft } from './RecommendDialog';
+import { initialDraft, recommendedGroups, reorderGroups } from './RecommendDialog';
 import { addConnection, createDefaultCatalog, loadCatalog } from '../../adapters/ai-models/catalog';
 import { closeDatabase, destroyDatabase, putSetting } from '../../core/storage';
 import { readModelOrder, readModelRoles, writeModelOrder } from '../../adapters/ai-models/model-prefs';
@@ -165,9 +165,16 @@ async function mountCard(): Promise<void> {
  * 打开「推荐配置」。弹窗会先读一次已有配置再渲染表单（避免异步回填把用户操作刷掉），
  * 所以点完必须等 `.ai-rec-group` 出现，不能立刻查输入框。
  */
-async function openRecommend(): Promise<void> {
+async function openRecommend(useRecommended = true): Promise<void> {
   await click(q('[data-testid="ai-card-recommend"]') as HTMLElement);
-  await waitFor(() => qa('.ai-rec-group').length > 0, '推荐配置表单渲染');
+  await waitFor(() => qa('.ai-rec-group').length > 0, '配置表单渲染');
+  if (!useRecommended) return;
+  // R7d：弹窗初始只有一条空地址，三组常用搭配要点「推荐配置」才生成
+  const preset = [...document.querySelectorAll('button')].find(
+    (node) => (node.textContent ?? '').trim() === '推荐配置',
+  );
+  if (preset) await click(preset as HTMLButtonElement);
+  await waitFor(() => qa('.ai-rec-group').length === 3, '三组推荐生成');
 }
 
 async function seedCatalog(catalog: AICatalog): Promise<void> {
@@ -188,12 +195,11 @@ afterEach(async () => {
 });
 
 describe('A. 设置页 AI 配置卡', () => {
-  it('三个入口按钮齐全：推荐配置 / 自由配置 / 选型指南', async () => {
+  it('两个入口按钮齐全：配置模型 / 选型指南', async () => {
     await mountCard();
     const labels = qa('.ai-card-actions .button').map((node) => node.textContent);
-    expect(labels).toEqual(['推荐配置', '自由配置', '选型指南']);
+    expect(labels).toEqual(['配置模型', '选型指南']);
     expect(qa('.ai-card-actions a').map((node) => node.getAttribute('href'))).toEqual([
-      '/ai-config',
       '/model-guide',
     ]);
   });
@@ -202,7 +208,7 @@ describe('A. 设置页 AI 配置卡', () => {
     await mountCard();
     await waitFor(() => text().includes('还没有配置任何模型'), '空状态文案');
     expect(q('.ai-card-empty')).not.toBeNull();
-    expect(text()).toContain('点「推荐配置」');
+    expect(text()).toContain('点「配置模型」');
     expect(q<HTMLButtonElement>('[data-testid="ai-card-detail"]')?.disabled).toBe(true);
   });
 
@@ -226,10 +232,10 @@ describe('A. 设置页 AI 配置卡', () => {
 });
 
 describe('B. 推荐配置弹窗', () => {
-  it('初始三组：DeepSeek / 方舟 / 灵绘两把 Key，共 4 把 Key、5 个模型', async () => {
+  it('初始只有一条空地址；点「推荐配置」后三组：DeepSeek / 方舟 / 灵绘三把 Key', async () => {
     await mountCard();
     await openRecommend();
-    await waitFor(() => text().includes('推荐配置'), '弹窗打开');
+    await waitFor(() => text().includes('配置模型'), '弹窗打开');
     expect(qa('.ai-rec-group')).toHaveLength(3);
     const urls = qa<HTMLInputElement>('.ai-rec-url').map((input) => input.value);
     expect(urls).toEqual([
@@ -237,20 +243,20 @@ describe('B. 推荐配置弹窗', () => {
       'https://ark.cn-beijing.volces.com/api/v3',
       'https://xn--ai-xg4e312c.com',
     ]);
-    expect(qa('.ai-rec-key-line')).toHaveLength(4);
-    expect(qa('.ai-rec-model-line')).toHaveLength(5);
+    expect(qa('.ai-rec-key-line')).toHaveLength(5);
+    expect(qa('.ai-rec-model-line')).toHaveLength(6);
     // 第三组两把 Key 的协议 / 计费方式不同（OpenAI 生图走中转 0.1 / Anthropic 写作走中转 1.1）
     // 协议：收起状态是按钮，显示简称（全名在展开列表里）
     const protos = qa<HTMLButtonElement>('.ai-rec-proto').map((button) =>
       (button.textContent ?? '').replace('▾', '').trim(),
     );
-    expect(protos).toEqual(['OpenAI', 'OpenAI', 'OpenAI', 'Anthropic']);
+    expect(protos).toEqual(['OpenAI', 'OpenAI', 'OpenAI', 'OpenAI', 'Anthropic']);
     // 计费方式：DeepSeek / 方舟 = 国内按量（数字固定 1，不再显示输入框）；灵绘两把 = 中转站
     const billings = qa<HTMLButtonElement>('.ai-rec-billing').map((button) => button.dataset.value);
-    expect(billings).toEqual(['domestic', 'domestic', 'relay', 'relay']);
+    expect(billings).toEqual(['domestic', 'domestic', 'relay', 'relay', 'relay']);
     // 数字框一直都在（1 / 0 / 汇率都要看得见），四种方式都能手改
     const multipliers = qa<HTMLInputElement>('.ai-rec-mult');
-    expect(multipliers.map((input) => input.value)).toEqual(['1', '1', '0.1', '1.1']);
+    expect(multipliers.map((input) => input.value)).toEqual(['1', '1', '0.1', '0.25', '1.1']);
     expect(multipliers.every((input) => input.readOnly === false)).toBe(true);
   });
 
@@ -375,9 +381,7 @@ describe('B. 推荐配置弹窗', () => {
       const keyInput = q<HTMLInputElement>('.ai-rec-key');
       if (!keyInput) throw new Error('找不到 Key 输入框');
       await setValue(keyInput, 'sk-dedup-test');
-      const save = Array.from(document.querySelectorAll('button')).find((button) =>
-        (button.textContent ?? '').includes('保存这'),
-      ) as HTMLButtonElement | undefined;
+      const save = q<HTMLButtonElement>('[data-testid="ai-recommend-save"]');
       if (!save) throw new Error('找不到保存按钮');
       await click(save);
       await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
@@ -419,8 +423,9 @@ describe('B. 推荐配置弹窗', () => {
     await click(addKeyButtons[2] as HTMLButtonElement);
 
     const keys = qa<HTMLInputElement>('.ai-rec-key');
-    expect(keys).toHaveLength(4); // 三组各一把 + 新加的一把
-    await setValue(keys[3] as HTMLInputElement, 'sk-second');
+    // 推荐后：deepseek 1 + 方舟 1 + 灵绘 3（原有 openai + 补的 gemini + 补的 opus），再加一把 = 6
+    expect(keys).toHaveLength(6);
+    await setValue(keys[5] as HTMLInputElement, 'sk-second');
 
     // 新那把 Key 的模型改成 gemini
     const modelLines = qa('.ai-rec-model-line');
@@ -428,10 +433,8 @@ describe('B. 推荐配置弹窗', () => {
     expect(lastModel).not.toBeNull();
     await setValue(lastModel as HTMLSelectElement, 'gemini-4-argon');
 
-    const save = Array.from(document.querySelectorAll('button')).find((button) =>
-      (button.textContent ?? '').includes('保存这'),
-    ) as HTMLButtonElement | undefined;
-    await click(save as HTMLButtonElement);
+    const save = q<HTMLButtonElement>('[data-testid="ai-recommend-save"]');
+    await click(save);
     await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
 
     const saved = await loadCatalog();
@@ -479,12 +482,10 @@ describe('B. 推荐配置弹窗', () => {
     await waitFor(() => text().includes('已配置'), '回填完成');
 
     // 打开后应该有两把 Key（不是只剩一把）
-    expect(qa('.ai-rec-key')).toHaveLength(4); // deepseek + 方舟 + 灵绘两把
+    expect(qa('.ai-rec-key')).toHaveLength(5); // deepseek + 方舟 + 灵绘三把（原有两把 + 补的 gemini）
 
-    const save = Array.from(document.querySelectorAll('button')).find((button) =>
-      (button.textContent ?? '').includes('保存这'),
-    ) as HTMLButtonElement | undefined;
-    await click(save as HTMLButtonElement);
+    const save = q<HTMLButtonElement>('[data-testid="ai-recommend-save"]');
+    await click(save);
     await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
 
     const saved = await loadCatalog();
@@ -546,15 +547,15 @@ describe('B. 推荐配置弹窗', () => {
     // 新增一整组 = 地址 + 一条 Key + 一条模型
     await click(byLabel('再加一组'));
     expect(qa('.ai-rec-group')).toHaveLength(4);
-    expect(qa('.ai-rec-key-line')).toHaveLength(5);
-    expect(qa('.ai-rec-model-line')).toHaveLength(6);
-    // 同一地址再加一把 Key（含它名下一条模型）
-    await click(byLabel('再加一把 Key'));
     expect(qa('.ai-rec-key-line')).toHaveLength(6);
     expect(qa('.ai-rec-model-line')).toHaveLength(7);
+    // 同一地址再加一把 Key（含它名下一条模型）
+    await click(byLabel('再加一把 Key'));
+    expect(qa('.ai-rec-key-line')).toHaveLength(7);
+    expect(qa('.ai-rec-model-line')).toHaveLength(8);
     // 这把 Key 下再加一个模型
     await click(byLabel('再加一个模型'));
-    expect(qa('.ai-rec-model-line')).toHaveLength(8);
+    expect(qa('.ai-rec-model-line')).toHaveLength(9);
   });
 
   it('删到边界时 × 禁用：最后一组 / 最后一把 Key / 最后一个模型', async () => {
@@ -595,7 +596,7 @@ describe('B. 推荐配置弹窗', () => {
     await click(q('[data-testid="ai-recommend-save"]'));
 
     await waitFor(() => text().includes('已保存'), '保存提示');
-    expect(text()).toContain('已保存 1 组连接（3 把 Key 空着被跳过）');
+    expect(text()).toContain('已保存 1 组连接，4 把 Key 空着被跳过');
     // 卡片立刻刷新出了新模型（不用手动刷新）
     await waitFor(() => text().includes('已配置 1 个模型'), '卡片刷新');
   });
@@ -727,13 +728,128 @@ describe('排序纯函数', () => {
     expect(nudgeModelKey(keys, 'c', 1)).toEqual(['a', 'b', 'c']);
   });
 
-  it('initialDraft 的三组初始值与任务书 §B.2 一致', () => {
-    const draft = initialDraft();
+  it('初始草稿是空地址；recommendedGroups 是 deepseek / 方舟 / 灵绘三把 Key', () => {
+    expect(initialDraft().map((group) => group.baseUrl)).toEqual(['']);
+    const draft = recommendedGroups();
     expect(draft.map((group) => group.vendor)).toEqual(['deepseek', 'ark', 'linghui']);
-    expect(draft[2].keys.map((key) => key.protocol)).toEqual(['openai', 'anthropic']);
+    expect(draft[2].keys.map((key) => key.protocol)).toEqual(['openai', 'openai', 'anthropic']);
     expect(draft[2].keys[0].models.map((model) => model.modelId)).toEqual([
       'gpt-image-2.5-flare',
       'gpt-image-2.5-sunburst',
     ]);
+  });
+});
+
+describe('D. 一个入口：载入已有配置 / 推荐置顶 / 拖拽顺序 / 删掉要落库', () => {
+  /** 灵绘 + 两把 Key（openai 生图 / anthropic claude） */
+  async function seedLinghui(): Promise<void> {
+    let catalog = createDefaultCatalog();
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-image',
+      protocol: 'openai',
+      multiplier: 0.1,
+      billingMode: 'relay',
+      models: [{ id: 'm1', displayName: 'gpt-image-2.5-flare', modelId: 'gpt-image-2.5-flare', caps: ['image'], enabled: true }],
+    }).catalog;
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-claude',
+      protocol: 'anthropic',
+      multiplier: 1.1,
+      billingMode: 'relay',
+      models: [{ id: 'm2', displayName: 'claude-opus-5-5', modelId: 'claude-opus-5-5', caps: ['text'], enabled: true }],
+    }).catalog;
+    await seedCatalog(catalog);
+  }
+
+  it('打开弹窗直接列出全部已有配置（不再套三组模板）', async () => {
+    await seedLinghui();
+    await mountCard();
+    await openRecommend(false);
+
+    expect(qa('.ai-rec-group')).toHaveLength(1);
+    expect(qa<HTMLInputElement>('.ai-rec-key')).toHaveLength(2);
+    expect(qa<HTMLInputElement>('.ai-rec-url')[0].value).toBe('https://xn--ai-xg4e312c.com');
+    // 一把 OpenAI、一把 Anthropic，协议都回填了
+    const protos = qa<HTMLButtonElement>('.ai-rec-proto').map((button) =>
+      (button.textContent ?? '').replace('▾', '').trim(),
+    );
+    expect(protos).toEqual(['OpenAI', 'Anthropic']);
+  });
+
+  it('点「推荐配置」：三组插到最上面，已有的组只补齐缺的 Key，不重复生成', async () => {
+    await seedLinghui();
+    await mountCard();
+    await openRecommend(false);
+    const preset = [...document.querySelectorAll('button')].find(
+      (node) => (node.textContent ?? '').trim() === '推荐配置',
+    );
+    await click(preset as HTMLButtonElement);
+    await waitFor(() => qa('.ai-rec-group').length === 3, '三组');
+
+    const urls = qa<HTMLInputElement>('.ai-rec-url').map((input) => input.value);
+    expect(urls).toEqual([
+      'https://api.deepseek.com',
+      'https://ark.cn-beijing.volces.com/api/v3',
+      'https://xn--ai-xg4e312c.com',
+    ]);
+    // 灵绘还是同一组：原有两把 + 补的 gemini（opus 已存在，不再加）
+    expect(qa('.ai-rec-key')).toHaveLength(5);
+    expect(text()).toContain('gemini-4-carbon');
+  });
+
+  it('拖拽纯函数：把 from 挪到 to 的位置；未知 id 原样返回', () => {
+    const draft = recommendedGroups();
+    const moved = reorderGroups(draft, draft[2].id, draft[0].id);
+    expect(moved.map((group) => group.vendor)).toEqual(['linghui', 'deepseek', 'ark']);
+    expect(reorderGroups(draft, 'x', draft[0].id)).toBe(draft);
+    expect(reorderGroups(draft, draft[0].id, 'x')).toBe(draft);
+  });
+
+  it('拖拽后保存：顺序写进 catalog.groupOrder，下次打开还是这个顺序', async () => {
+    await mountCard();
+    await openRecommend();
+    const grips = qa<HTMLElement>('.ai-rec-grip');
+    const groups = qa<HTMLElement>('.ai-rec-group');
+    const dataTransfer = { effectAllowed: '', setData: () => undefined, getData: () => '' };
+    await act(async () => {
+      grips[2].dispatchEvent(
+        Object.assign(new Event('dragstart', { bubbles: true }), { dataTransfer }),
+      );
+    });
+    await act(async () => {
+      groups[0].dispatchEvent(new Event('drop', { bubbles: true }));
+    });
+
+    // 三组各填一把 Key，保存后三组都会落库（顺序才看得出来）
+    await setValue(byLabel<HTMLInputElement>('API Key 1-1') as HTMLInputElement, 'sk-1');
+    await setValue(byLabel<HTMLInputElement>('API Key 2-1') as HTMLInputElement, 'sk-2');
+    await setValue(byLabel<HTMLInputElement>('API Key 3-1') as HTMLInputElement, 'sk-3');
+    await click(q('[data-testid="ai-recommend-save"]'));
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    expect(saved.groupOrder?.[0]).toBe('linghui|https://xn--ai-xg4e312c.com');
+    expect(initialDraft(saved).map((group) => group.vendor)).toEqual(['linghui', 'deepseek', 'ark']);
+  });
+
+  it('删掉一组再保存：那条连接会从配置里消失', async () => {
+    await seedLinghui();
+    await mountCard();
+    await openRecommend(false);
+    // 删掉灵绘这一组（先加一组空白组，否则最后一组的 × 是禁用的）
+    expect(qa('.ai-rec-group')).toHaveLength(1);
+    await click(byLabel('再加一组'));
+    const deletes = qa<HTMLButtonElement>('[aria-label="删除整组"]');
+    await click(deletes[0]);
+    await click(q('[data-testid="ai-recommend-save"]'));
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    const linghui = saved.providers.find((provider) => provider.id === 'linghui');
+    expect(linghui?.connections ?? []).toHaveLength(0);
   });
 });

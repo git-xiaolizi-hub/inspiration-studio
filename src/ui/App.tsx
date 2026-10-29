@@ -1,6 +1,5 @@
 import { Suspense, lazy } from 'react';
 import { HashRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { AIConfigPage } from './pages/AIConfigPage';
 import { ModelGuidePage } from './pages/ModelGuidePage';
 import { RecordDetailPage } from './pages/RecordDetailPage';
 import { RecordListPage } from './pages/RecordListPage';
@@ -68,7 +67,8 @@ export function App() {
             <Route path="/" element={<RecordListPage />} />
             <Route path="/records/:id" element={<RecordDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/ai-config" element={<AIConfigPage />} />
+            {/* R7d：配置入口合并成一个弹窗，「自由配置」页不再单独存在；老地址重定向到设置页 */}
+            <Route path="/ai-config" element={<Navigate to="/settings" replace />} />
             <Route path="/model-guide" element={<ModelGuidePage />} />
             <Route path="/canvas" element={<Navigate to="/studio" replace />} />
             {/* P3：写作工作台（替换 M5a 的画布）。/canvas 保留为重定向 —— 旧书签不许 404 */}

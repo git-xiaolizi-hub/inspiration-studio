@@ -4457,6 +4457,59 @@ input[type='date'] {
 
 
 
+/* 弹窗顶部：一行说明 + 「推荐配置」按钮；下面五行说明各自在讲谁 */
+.ai-rec-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ai-rec-head .modal-sub { flex: 1; margin: 0; }
+
+.ai-rec-recommend {
+  flex: none;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-rec-recommend:hover { border-color: var(--accent); color: var(--accent); }
+
+.ai-rec-why {
+  margin: 8px 0 2px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 18px;
+  color: var(--fg-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.ai-rec-why b { color: var(--fg-2); font-weight: 600; }
+
+/* 组头左侧的拖拽把手：默认淡淡的，hover 才明显 */
+.ai-rec-grip {
+  margin-right: 2px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--fg-3);
+  opacity: 0.5;
+  cursor: grab;
+  font-size: 12px;
+  letter-spacing: -2px;
+}
+
+.ai-rec-grip:hover { opacity: 1; }
+
+.ai-rec-group.is-dragging { opacity: 0.5; }
 .ai-rec-tag {
   padding: 1px 6px;
   border: 1px solid var(--border);
@@ -4850,6 +4903,11 @@ input[type='date'] {
   padding-left: 0;
 }
 
+.ai-rec-hint {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--fg-3);
+}
 .ai-rec-warn {
   margin: 8px 0 0;
   font-size: 11.5px;

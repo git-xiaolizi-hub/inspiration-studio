@@ -105,14 +105,14 @@ describe('设置页承接原六项入口（收起导航 ≠ 眼睛看不到页�
     expect(dom.textContent ?? '').not.toContain('单卡创作');
   });
 
-  it('「AI 配置」区块有 AI 配置 / 厂商与模型指南 两个链接（含曾经被误删的 /model-guide）', () => {
+  it('「AI 配置」区块：配置模型按钮 + 选型指南链接（自由配置入口已并入弹窗）', () => {
     const dom = renderAt('#/settings');
     const block = dom.querySelector('[data-block="model-vendors"]');
     expect(block).not.toBeNull();
     expect(block?.querySelector('h3')?.textContent).toBe('AI 配置');
-    // R7b：卡片从两个 `.entry-list` 链接改成三按钮（推荐配置 = 弹窗，另外两个仍是路由链接）。
-    // 断言的意思没变：`/ai-config` 与 `/model-guide` 两个入口都必须还在、href 不能漂。
-    expect(hrefsOf(block as ParentNode, '.ai-card-actions a')).toEqual(['#/ai-config', '#/model-guide']);
+    // R7d：配置只有一个入口（弹窗），剩下的是选型指南。`/ai-config` 老地址会重定向到设置页。
+    expect(hrefsOf(block as ParentNode, '.ai-card-actions a')).toEqual(['#/model-guide']);
+    expect(block?.querySelector('[data-testid="ai-card-recommend"]')?.textContent).toBe('配置模型');
   });
 
   it('R7b 起只有四张卡，两行两列：高卡一行（AI 配置 / 用户数据）、矮卡一行（语音识别 / 外观主题）', () => {
@@ -155,9 +155,10 @@ describe('设置页承接原六项入口（收起导航 ≠ 眼睛看不到页�
     expect(labels).toEqual(['AI 配置', '用户数据', '语音识别', '外观主题']);
   });
 
-  it('设置页原有的「去 AI 配置」快捷入口仍保留（不与新区块冲突）', () => {
+  it('设置页不再有「自由配置」入口：配置只在「配置模型」弹窗里做', () => {
     const dom = renderAt('#/settings');
-    expect(hrefsOf(dom, 'a')).toContain('#/ai-config');
+    expect(hrefsOf(dom, 'a')).not.toContain('#/ai-config');
+    expect(dom.textContent ?? '').not.toContain('自由配置');
   });
 
   it('导入入口仍然只有一处（在「用户数据」里，不是顶栏也不是别处新增按钮）', () => {

@@ -193,11 +193,8 @@ export function AIConfigCard() {
             setRecommendOpen(true);
           }}
         >
-          推荐配置
+          配置模型
         </button>
-        <Link className="button ghost" to="/ai-config">
-          自由配置
-        </Link>
         <Link className="button ghost" to="/model-guide">
           选型指南
         </Link>
@@ -222,8 +219,8 @@ export function AIConfigCard() {
 
       {total === 0 ? (
         <div className="ai-card-empty">
-          写作、生图、生视频都还没有可用的模型。<b>点「推荐配置」</b>
-          会自动填好三组最常见的连接，你只需要补三个 Key；也可以点「自由配置」自己一条条填。
+          写作、生图、生视频都还没有可用的模型。<b>点「配置模型」</b>
+          会自动填好三组最常见的连接，你只需要补三个 Key；也可以自己一条条填。
         </div>
       ) : (
         <div className="ai-card-chips" ref={chipsRef}>

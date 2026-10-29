@@ -224,6 +224,19 @@ export interface Provider {
 export interface AICatalog {
   providers: Provider[];
   updatedAt: number;
+  /**
+   * 配置组（= 厂商 + base_url）的显示顺序，由「配置模型」弹窗拖拽后写入。
+   *
+   * 为什么存在 catalog 里而不是 settings：它描述的是这份配置本身怎么排，
+   * 跟着导出/导入一起走才合理（换台机器导入别人的配置，顺序也该一起来）。
+   * 存的是 `groupKeyOf()` 的键；表里没有的组按出现顺序排在最后。
+   */
+  groupOrder?: string[];
+}
+
+/** 配置组 = 厂商 + 地址（不是连接：同一地址的多把 Key 属于同一组） */
+export function groupKeyOf(providerId: string, baseUrl: string): string {
+  return `${providerId}|${baseUrl.trim().replace(/\/+$/, '').toLowerCase()}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1071,7 +1084,8 @@ function normalizeConnection(value: unknown): Connection | null {
     apiKey: asString(row.apiKey),
     protocol: asProtocol(row.protocol),
     multiplier: asMultiplier(row.multiplier),
-    billingMode: asBillingMode(row.billingMode, asMultiplier(row.multiplier)),
+    billingMode: asBillingMode(row.billingMode, asMultiplier(row.multiplier)),
+
     modeMultipliers: asModeMultipliers(
       (row as { modeMultipliers?: unknown }).modeMultipliers,
       (row as { relayMultiplier?: unknown }).relayMultiplier,
@@ -1159,9 +1173,13 @@ export function normalizeCatalog(value: unknown): AICatalog {
   const others = parsed.filter(
     (provider) => !isCustomProvider(provider) && !fallback.providers.some((item) => item.id === provider.id),
   );
+  const groupOrder = Array.isArray(row.groupOrder)
+    ? row.groupOrder.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+    : undefined;
   return {
     providers: sortProviders([...merged, ...customs, ...others]),
     updatedAt: typeof row.updatedAt === 'number' ? row.updatedAt : 0,
+    ...(groupOrder && groupOrder.length > 0 ? { groupOrder } : {}),
   };
 }
 
@@ -1227,7 +1245,12 @@ export async function loadCatalog(): Promise<AICatalog> {
 }
 
 export async function saveCatalog(catalog: AICatalog): Promise<AICatalog> {
-  const next: AICatalog = { providers: sortProviders(catalog.providers), updatedAt: Date.now() };
+  const next: AICatalog = {
+    providers: sortProviders(catalog.providers),
+    updatedAt: Date.now(),
+    // 组的显示顺序也是配置的一部分，别在保存时丢掉
+    ...(catalog.groupOrder && catalog.groupOrder.length > 0 ? { groupOrder: catalog.groupOrder } : {}),
+  };
   await putSetting({ key: AI_CATALOG_KEY, value: next, updatedAt: next.updatedAt });
   return next;
 }
