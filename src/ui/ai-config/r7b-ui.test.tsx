@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIConfigCard } from './AIConfigCard';
 import { AI_CONFIG_CARD_MAX_FLAT, moveModelKey, nudgeModelKey } from './detail-order';
 import { initialDraft } from './RecommendDialog';
+import { loadCatalog } from '../../adapters/ai-models/catalog';
 import { closeDatabase, destroyDatabase, putSetting } from '../../core/storage';
 import { readModelOrder, readModelRoles, writeModelOrder } from '../../adapters/ai-models/model-prefs';
 import type { AICatalog, ModelCap, ModelEntry } from '../../adapters/ai-models/catalog';
@@ -341,6 +342,47 @@ describe('B. 推荐配置弹窗', () => {
     await pick('中转站');
     expect(billing().dataset.value).toBe('relay');
     expect(mult().value).toBe('0.35');
+  });
+
+  it('已经配过的连接：打开推荐配置直接回填，并标「已配置」', async () => {
+    await seedCatalog(catalogTen());
+    await mountCard();
+    await click(q('[data-testid="ai-card-recommend"]'));
+    await waitFor(() => text().includes('推荐配置'), '弹窗打开');
+    await waitFor(() => text().includes('已配置'), '回填完成');
+
+    const firstKey = q<HTMLInputElement>('.ai-rec-key');
+    expect((firstKey?.value ?? '').length).toBeGreaterThan(0);
+    expect(qa('.ai-rec-tag').length).toBeGreaterThan(0);
+    // 回填的是已有配置里的协议/计费方式，不是模板默认值
+    expect(q<HTMLButtonElement>('.ai-rec-proto')?.dataset.value).toBe('openai');
+  });
+
+  it('同一连接保存两次，不会长出第二条', async () => {
+    await mountCard();
+    const saveOnce = async () => {
+      await click(q('[data-testid="ai-card-recommend"]'));
+      await waitFor(() => text().includes('推荐配置'), '弹窗打开');
+      const keyInput = q<HTMLInputElement>('.ai-rec-key');
+      if (!keyInput) throw new Error('找不到 Key 输入框');
+      await setValue(keyInput, 'sk-dedup-test');
+      const save = Array.from(document.querySelectorAll('button')).find((button) =>
+        (button.textContent ?? '').includes('保存这'),
+      ) as HTMLButtonElement | undefined;
+      if (!save) throw new Error('找不到保存按钮');
+      await click(save);
+      await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+    };
+
+    await saveOnce();
+    await saveOnce();
+
+    const saved = await loadCatalog();
+    const deepseek = saved.providers.find((provider) => provider.id === 'deepseek');
+    const sameUrl = (deepseek?.connections ?? []).filter((item) =>
+      item.baseUrl.includes('api.deepseek.com'),
+    );
+    expect(sameUrl).toHaveLength(1);
   });
 
   it('粘贴 url 后 500ms 内自动识别厂商（moonshot → 月之暗面 / Kimi）', async () => {

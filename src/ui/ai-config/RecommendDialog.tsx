@@ -79,6 +79,8 @@ interface DraftGroup {
   baseUrl: string;
   /** 组标题（只有三组初始搭配有；新增组显示「新的一组」） */
   title?: string;
+  /** 已经配过这条连接（进弹窗时从已有配置回填）：界面上标「已配置」 */
+  existingConnectionId?: string;
   keys: DraftKey[];
 }
 
@@ -175,7 +177,47 @@ function newKey(
 }
 
 /** 三组初始值（任务书 §B.2 的表；地址取 `VENDOR_META` 的官方值） */
-export function initialDraft(): DraftGroup[] {
+/** 比较 base_url：忽略首尾空格、末尾斜杠、大小写 */
+function normalizeUrl(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\/+$/, '');
+}
+
+/**
+ * 已经配过的用户不该再填一遍：同一厂商 + 同一 base_url 的连接直接回填进草稿。
+ * 一条连接 = 一把 Key（中转站里 claude 与生图可能各一把），匹配到的都映射进来。
+ */
+function seedGroup(base: DraftGroup, catalog: AICatalog | null): DraftGroup {
+  if (!catalog) return base;
+  const provider = catalog.providers.find((item) => item.id === base.vendor);
+  if (!provider) return base;
+  const want = normalizeUrl(base.baseUrl);
+  const matched = provider.connections.filter(
+    (item) => normalizeUrl(item.baseUrl) === want && item.apiKey.trim() !== '',
+  );
+  if (matched.length === 0) return base;
+  return {
+    ...base,
+    existingConnectionId: matched[0].id,
+    keys: matched.map((item) => ({
+      id: makeId('dk'),
+      apiKey: item.apiKey,
+      protocol: item.protocol ?? 'openai',
+      multiplier: String(item.multiplier ?? 1),
+      billingMode: item.billingMode ?? 'relay',
+      modeMultipliers: item.modeMultipliers
+        ? Object.fromEntries(
+            Object.entries(item.modeMultipliers).map(([mode, value]) => [mode, String(value)]),
+          )
+        : undefined,
+      models: (item.models.length > 0 ? item.models : [{ modelId: '' }]).map((model) => ({
+        id: makeId('dm'),
+        modelId: model.modelId,
+      })),
+    })),
+  };
+}
+
+export function initialDraft(catalog: AICatalog | null = null): DraftGroup[] {
   return [
     {
       id: 'grp-writing',
@@ -204,7 +246,7 @@ export function initialDraft(): DraftGroup[] {
         newKey(['claude-opus-5-5'], 'anthropic', '1.1', 'relay'),
       ],
     },
-  ];
+  ].map((group) => seedGroup(group as DraftGroup, catalog));
 }
 
 /** 下拉里放短名：124px 的格子塞不下「火山方舟（豆包）」，括号里的补充信息放到 title */
@@ -292,6 +334,8 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   /** 「拉取模型」从站上取回来的 id，只用于补下拉候选，不回写模型 */
   const [pulledModels, setPulledModels] = useState<Record<string, string[]>>({});
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  /** 用户是否已经动过草稿（决定异步回填能不能落地） */
+  const dirtyRef = useRef(false);
   /**
    * 汇率是异步到的：用户点「国外按量」时可能还是兜底的 6.8。
    * 等真汇率回来，把「还停在 6.8 这个默认值」的行改成真汇率；用户自己改过的数字一律不动。
@@ -324,13 +368,24 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     return () => clearTimeout(timer);
   }, [toast, toastHovered]);
 
-  /** 每次打开都回到初始三组（上一次没保存的草稿不带到下一次，避免半截 Key 混进新配置） */
+  /**
+   * 每次打开都会重新生成草稿（上一次没保存的半截 Key 不带进来），
+   * 但会先去读一次已有配置：配过的组直接回填，用户不用再填一遍。
+   */
   useEffect(() => {
-    if (open) {
-      setDraft(initialDraft());
-      setError(null);
-      setSaving(false);
-    }
+    if (!open) return;
+    let alive = true;
+    setError(null);
+    setSaving(false);
+    dirtyRef.current = false;
+    setDraft(initialDraft());
+    void loadCatalog().then((catalog) => {
+      // 用户已经在填了就别覆盖（会把他刚输入的 Key 冲掉）
+      if (alive && !dirtyRef.current) setDraft(initialDraft(catalog));
+    });
+    return () => {
+      alive = false;
+    };
   }, [open]);
 
   useEffect(
@@ -350,6 +405,8 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   );
 
   const patchGroup = useCallback((groupId: string, patch: (group: DraftGroup) => DraftGroup) => {
+    // 用户只要动过草稿，后面异步读回来的「已有配置」就不能再覆盖它
+    dirtyRef.current = true;
     setDraft((prev) => prev.map((group) => (group.id === groupId ? patch(group) : group)));
   }, []);
 
@@ -612,6 +669,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
             <div className="ai-rec-group-head">
               <span className="ai-rec-dot" aria-hidden="true" />
               {group.title ?? `新的一组 · ${vendorNameOf(group)}`}
+              {group.existingConnectionId ? <span className="ai-rec-tag">已配置</span> : null}
             </div>
 
             {/* 第一层：base_url + 厂商 */}
@@ -973,12 +1031,35 @@ function isRealModel(entry: ModelEntry): boolean {
 }
 
 /** 追加一把 Key 到既有厂商（合并语义：不动已有连接） */
+/**
+ * 写入一条连接。**先找再写**：同一厂商 + 同一 base_url + 同一协议已经存在时，
+ * 只把缺的模型补进去 —— 反复点保存不会长出重复连接（委托人问的「冗余」）。
+ */
 function appendKey(
   catalog: AICatalog,
   providerId: string,
   group: DraftGroup,
   key: DraftKey,
 ): AICatalog {
+  const wanted = key.models.map((model) => entryFor(group, model.modelId)).filter(isRealModel);
+  const provider = catalog.providers.find((item) => item.id === providerId);
+  const sameUrl = normalizeUrl(group.baseUrl);
+  const existing = provider?.connections.find(
+    (item) => normalizeUrl(item.baseUrl) === sameUrl && (item.protocol ?? 'openai') === key.protocol,
+  );
+
+  if (existing) {
+    const known = new Set(existing.models.map((model) => model.modelId));
+    const added = wanted.filter((model) => !known.has(model.modelId));
+    const patch: Parameters<typeof updateConnection>[3] = {
+      modeMultipliers: collectModeMultipliers(key),
+    };
+    if (added.length > 0) patch.models = [...existing.models, ...added];
+    // 之前没填过 Key（空着）才补，别覆盖用户已有的
+    if (existing.apiKey.trim() === '') patch.apiKey = key.apiKey.trim();
+    return updateConnection(catalog, providerId, existing.id, patch);
+  }
+
   return addConnection(catalog, providerId, {
     label: vendorNameOf(group),
     baseUrl: group.baseUrl.trim(),
@@ -987,6 +1068,6 @@ function appendKey(
     multiplier: multiplierOfText(key.multiplier),
     billingMode: key.billingMode,
     modeMultipliers: collectModeMultipliers(key),
-    models: key.models.map((model) => entryFor(group, model.modelId)).filter(isRealModel),
+    models: wanted,
   }).catalog;
 }

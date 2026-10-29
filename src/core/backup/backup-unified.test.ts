@@ -109,7 +109,7 @@ describe('判据 6：完整备份 zip 的条目清单', () => {
     }>(zip, 'manifest.json');
     expect(manifest.format).toBe(BACKUP_FORMAT);
     expect(manifest.version).toBe(BACKUP_VERSION);
-    expect(manifest.app).toBe('Inspiration Assistant');
+    expect(manifest.app).toBe('灵感工坊');
     expect(manifest.containsKey).toBe(false);
     expect(manifest.counts).toEqual({ records: 1, media: 1 });
 
@@ -269,7 +269,7 @@ describe('判据 9：版本不匹配 → 可读错误，且不写入', () => {
         format: BACKUP_FORMAT,
         version: BACKUP_VERSION + 1,
         exportedAt: new Date().toISOString(),
-        app: 'Inspiration Assistant',
+        app: '灵感工坊',
         containsKey: false,
         counts: { records: 1, media: 0 },
       }),
