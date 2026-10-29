@@ -49,7 +49,7 @@ import { DEFAULT_RECORD_ROLE, normalizeRole, normalizeSourceIds } from '../recor
 export const BACKUP_FORMAT = 'ia-v2-backup';
 /** v2：新增 ai-catalog / settings / price-table 三类条目（M5a 备份统一） */
 export const BACKUP_VERSION = 2;
-export const BACKUP_APP = 'Inspiration Assistant';
+export const BACKUP_APP = '灵感工坊';
 
 export const SETTINGS_FILE_FORMAT = 'ia-v2-settings';
 export const PRICE_TABLE_FILE_FORMAT = 'ia-v2-price-table';

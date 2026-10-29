@@ -84,9 +84,9 @@ describe('顶栏收成三项（D2）', () => {
     expect(nav.textContent).not.toContain('导入');
   });
 
-  it('产品名没改：仍是 Inspiration Assistant（「灵感手记」只是设计稿占位名）', () => {
+  it('产品名固定为「灵感工坊」（「灵感手记」只是设计稿占位名）', () => {
     const dom = renderAt('');
-    expect(dom.querySelector('.app-header h1')?.textContent).toBe('Inspiration Assistant');
+    expect(dom.querySelector('.app-header h1')?.textContent).toBe('灵感工坊');
   });
 });
 

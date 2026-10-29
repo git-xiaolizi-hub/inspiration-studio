@@ -35,7 +35,7 @@ export function App() {
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app">
         <header className="app-header">
-          <h1>Inspiration Assistant</h1>
+          <h1>灵感工坊</h1>
           <nav className="app-nav" aria-label="主导航">
             {/*
               D2 决议：顶栏只留三项。原来那六项（记录 / 设置 / AI 配置 / 画布 / 画板 / 视频）
