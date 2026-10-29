@@ -4449,6 +4449,12 @@ input[type='date'] {
 
 /* ── 自绘下拉（RecMenu）：协议 / 厂商 / 计费方式共用一套外观 ── */
 /* 「已配置」小标签：这组是从用户已有配置回填的 */
+.ai-rec-loading {
+  margin: 12px 2px;
+  color: var(--fg-3);
+  font-size: 12px;
+}
+
 .ai-rec-tag {
   padding: 1px 6px;
   border: 1px solid var(--border);

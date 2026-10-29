@@ -68,6 +68,9 @@ interface DraftKey {
 
   /** 每种计费方式各自记住用户填的原文：切走再切回不丢，且随备份导出 */
   modeMultipliers?: Partial<Record<BillingMode, string>>;
+
+  /** 从已有配置回填来的行：它原本是哪条连接（保存时原地改，不新建） */
+  connectionId?: string;
   models: DraftModel[];
 }
 
@@ -200,6 +203,7 @@ function seedGroup(base: DraftGroup, catalog: AICatalog | null): DraftGroup {
     existingConnectionId: matched[0].id,
     keys: matched.map((item) => ({
       id: makeId('dk'),
+      connectionId: item.id,
       apiKey: item.apiKey,
       protocol: item.protocol ?? 'openai',
       multiplier: String(item.multiplier ?? 1),
@@ -336,6 +340,8 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   /** 用户是否已经动过草稿（决定异步回填能不能落地） */
   const dirtyRef = useRef(false);
+  /** 已有配置读完之前不渲染表单：否则回填会把用户刚展开的菜单刷掉 */
+  const [seeded, setSeeded] = useState(false);
   /**
    * 汇率是异步到的：用户点「国外按量」时可能还是兜底的 6.8。
    * 等真汇率回来，把「还停在 6.8 这个默认值」的行改成真汇率；用户自己改过的数字一律不动。
@@ -378,10 +384,13 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     setError(null);
     setSaving(false);
     dirtyRef.current = false;
+    setSeeded(false);
     setDraft(initialDraft());
     void loadCatalog().then((catalog) => {
-      // 用户已经在填了就别覆盖（会把他刚输入的 Key 冲掉）
-      if (alive && !dirtyRef.current) setDraft(initialDraft(catalog));
+      if (!alive) return;
+      // 读完再放行：用户在读之前不可能开始填，也就不存在「回填冲掉输入」
+      setDraft(initialDraft(catalog));
+      setSeeded(true);
     });
     return () => {
       alive = false;
@@ -656,7 +665,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
 
       {error && <p className="error small">{error}</p>}
 
-      {draft.map((group, groupIndex) => {
+      {seeded ? draft.map((group, groupIndex) => {
         const lastGroup = draft.length <= 1;
         const candidates = Array.from(
           new Set([
@@ -960,7 +969,9 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
 
           </div>
         );
-      })}
+      }) : (
+        <p className="ai-rec-loading">正在读取已有配置…</p>
+      )}
 
       <div className="ai-rec-legend">
         <h4>＋ 和 × 各管多大范围</h4>
@@ -1030,10 +1041,15 @@ function isRealModel(entry: ModelEntry): boolean {
   return entry.modelId.trim() !== '';
 }
 
-/** 追加一把 Key 到既有厂商（合并语义：不动已有连接） */
 /**
- * 写入一条连接。**先找再写**：同一厂商 + 同一 base_url + 同一协议已经存在时，
- * 只把缺的模型补进去 —— 反复点保存不会长出重复连接（委托人问的「冗余」）。
+ * 写入一条连接。三种情况分开处理：
+ *
+ * 1. 这一行是从已有配置回填的（有 connectionId）→ 原地更新那条连接；
+ * 2. 新加的一行，且**同 URL + 同协议 + 同一把 Key** 已经存在 → 只补模型（重复保存不产生冗余）；
+ * 3. 其余（包括同 URL 同协议但 Key 不同的）→ 新建一条。
+ *
+ * 第 3 条是必须的：中转站允许同一地址挂多把 Key（一把跑 gpt-image、另一把跑 gemini）。
+ * 只按 URL + 协议判重，会把第二把的模型并进第一把。
  */
 function appendKey(
   catalog: AICatalog,
@@ -1044,26 +1060,50 @@ function appendKey(
   const wanted = key.models.map((model) => entryFor(group, model.modelId)).filter(isRealModel);
   const provider = catalog.providers.find((item) => item.id === providerId);
   const sameUrl = normalizeUrl(group.baseUrl);
-  const existing = provider?.connections.find(
-    (item) => normalizeUrl(item.baseUrl) === sameUrl && (item.protocol ?? 'openai') === key.protocol,
-  );
+  const apiKey = key.apiKey.trim();
 
-  if (existing) {
-    const known = new Set(existing.models.map((model) => model.modelId));
-    const added = wanted.filter((model) => !known.has(model.modelId));
-    const patch: Parameters<typeof updateConnection>[3] = {
+  const mergedModels = (base: ModelEntry[]): ModelEntry[] => {
+    const known = new Set(base.map((model) => model.modelId));
+    return [...base, ...wanted.filter((model) => !known.has(model.modelId))];
+  };
+
+  // ① 回填行：改它自己那条（Key 被用户改过也照样改这条，而不是新建）
+  const origin = key.connectionId
+    ? provider?.connections.find((item) => item.id === key.connectionId)
+    : undefined;
+  if (origin) {
+    return updateConnection(catalog, providerId, origin.id, {
+      baseUrl: group.baseUrl.trim(),
+      apiKey,
+      protocol: key.protocol,
+      multiplier: multiplierOfText(key.multiplier),
+      billingMode: key.billingMode,
       modeMultipliers: collectModeMultipliers(key),
-    };
-    if (added.length > 0) patch.models = [...existing.models, ...added];
-    // 之前没填过 Key（空着）才补，别覆盖用户已有的
-    if (existing.apiKey.trim() === '') patch.apiKey = key.apiKey.trim();
-    return updateConnection(catalog, providerId, existing.id, patch);
+      models: mergedModels(origin.models),
+    });
   }
 
+  // ② 同一把 Key 又存了一次：只补缺的模型
+  const sameKey = apiKey
+    ? provider?.connections.find(
+        (item) =>
+          normalizeUrl(item.baseUrl) === sameUrl &&
+          (item.protocol ?? 'openai') === key.protocol &&
+          item.apiKey.trim() === apiKey,
+      )
+    : undefined;
+  if (sameKey) {
+    return updateConnection(catalog, providerId, sameKey.id, {
+      modeMultipliers: collectModeMultipliers(key),
+      models: mergedModels(sameKey.models),
+    });
+  }
+
+  // ③ 新的一把 Key（同地址、同协议也可能有多把）
   return addConnection(catalog, providerId, {
     label: vendorNameOf(group),
     baseUrl: group.baseUrl.trim(),
-    apiKey: key.apiKey.trim(),
+    apiKey,
     protocol: key.protocol,
     multiplier: multiplierOfText(key.multiplier),
     billingMode: key.billingMode,

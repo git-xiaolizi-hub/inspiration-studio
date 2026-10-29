@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIConfigCard } from './AIConfigCard';
 import { AI_CONFIG_CARD_MAX_FLAT, moveModelKey, nudgeModelKey } from './detail-order';
 import { initialDraft } from './RecommendDialog';
-import { loadCatalog } from '../../adapters/ai-models/catalog';
+import { addConnection, createDefaultCatalog, loadCatalog } from '../../adapters/ai-models/catalog';
 import { closeDatabase, destroyDatabase, putSetting } from '../../core/storage';
 import { readModelOrder, readModelRoles, writeModelOrder } from '../../adapters/ai-models/model-prefs';
 import type { AICatalog, ModelCap, ModelEntry } from '../../adapters/ai-models/catalog';
@@ -383,6 +383,60 @@ describe('B. 推荐配置弹窗', () => {
       item.baseUrl.includes('api.deepseek.com'),
     );
     expect(sameUrl).toHaveLength(1);
+  });
+
+  it('同一地址同协议的第二把 Key 会新建连接，模型不会并进第一把', async () => {
+    // 先造一条已配置的灵绘连接（OpenAI 协议，只有生图模型）
+    let catalog = createDefaultCatalog();
+    catalog = addConnection(catalog, 'linghui', {
+      label: '灵绘',
+      baseUrl: 'https://xn--ai-xg4e312c.com',
+      apiKey: 'sk-first',
+      protocol: 'openai',
+      multiplier: 0.1,
+      billingMode: 'relay',
+      models: [
+        { id: 'm1', displayName: 'gpt-image-2.5-flare', modelId: 'gpt-image-2.5-flare', caps: ['image'], enabled: true },
+      ],
+    }).catalog;
+    await seedCatalog(catalog);
+
+    await mountCard();
+    await click(q('[data-testid="ai-card-recommend"]'));
+    await waitFor(() => text().includes('已配置'), '回填完成');
+
+    // 在灵绘那把 Key 上点「再加一把 Key」（第三组第一行，索引 2）
+    const addKeyButtons = qa('[aria-label="再加一把 Key"]');
+    await click(addKeyButtons[2] as HTMLButtonElement);
+
+    const keys = qa<HTMLInputElement>('.ai-rec-key');
+    expect(keys).toHaveLength(4); // 三组各一把 + 新加的一把
+    await setValue(keys[3] as HTMLInputElement, 'sk-second');
+
+    // 新那把 Key 的模型改成 gemini
+    const modelLines = qa('.ai-rec-model-line');
+    const lastModel = modelLines[modelLines.length - 1]?.querySelector('select') as HTMLSelectElement | null;
+    expect(lastModel).not.toBeNull();
+    await setValue(lastModel as HTMLSelectElement, 'gemini-4-argon');
+
+    const save = Array.from(document.querySelectorAll('button')).find((button) =>
+      (button.textContent ?? '').includes('保存这'),
+    ) as HTMLButtonElement | undefined;
+    await click(save as HTMLButtonElement);
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    const linghui = saved.providers.find((provider) => provider.id === 'linghui');
+    const conns = linghui?.connections ?? [];
+    expect(conns).toHaveLength(2);
+
+    const first = conns.find((item) => item.apiKey === 'sk-first');
+    const second = conns.find((item) => item.apiKey === 'sk-second');
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    // 关键：gemini 属于第二把，没被并进第一把
+    expect(first?.models.map((model) => model.modelId)).not.toContain('gemini-4-argon');
+    expect(second?.models.map((model) => model.modelId)).toContain('gemini-4-argon');
   });
 
   it('粘贴 url 后 500ms 内自动识别厂商（moonshot → 月之暗面 / Kimi）', async () => {
