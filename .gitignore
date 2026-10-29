@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.vite/
+.DS_Store
+*.log
+.tmp/
+*.local
+public/models/
+public/ort/

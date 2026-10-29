@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inspiration Assistant</title>
+    <!--
+      首屏防闪（M7 §2.2）：必须在任何 CSS 之前执行。
+      IndexedDB 是异步的，读不到；所以主题名同时写一份在 localStorage['ia-theme']。
+      这里只做「设属性」这一件事，真正的状态与持久化在 src/core/theme/session.ts。
+
+      P1.5：只剩「主题名」这一个真相 —— 读 ia-theme，读不到就用柔和奶油（clay）。
+      不再跟随系统（委托人：「跟随系统似乎没有必要了」）。
+      下面这张 theme → scheme 的表是 core/theme/index.ts 里 THEMES 的镜像（内联脚本不能 import），
+      改主题表时记得同步这一处：data-scheme 决定滚动条与表单原生控件的配色。
+    -->
+    <script>
+      (function () {
+        try {
+          var schemes = { clay: 'light', violet: 'light', neon: 'dark', amber: 'dark' };
+          var t = localStorage.getItem('ia-theme');
+          if (t && schemes[t]) {
+            document.documentElement.setAttribute('data-theme', t);
+            document.documentElement.setAttribute('data-scheme', schemes[t]);
+            return;
+          }
+          document.documentElement.setAttribute('data-theme', 'clay');
+          document.documentElement.setAttribute('data-scheme', 'light');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

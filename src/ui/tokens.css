@@ -1,0 +1,363 @@
+/* ============================================================================
+ * 设计令牌（Design Tokens）
+ * ----------------------------------------------------------------------------
+ * 规则：**组件样式只准用 var(--token)，不准写具体颜色值。**
+ * 换主题 = 换 <html data-theme="..."> 的值 = 只换下面这一层变量。
+ *
+ * 四套主题：
+ *   clay    奶油手作（浅）      —— 温暖、纸感、大圆角
+ *   violet  紫罗兰梦（浅）      —— 梦幻、紫调、渐变焦点
+ *   neon    霓虹深空（深）      —— 科技、青辉光、锐利
+ *   amber   暖夜琥珀（深）      —— 深夜独处、暖光、低刺激
+ *
+ * 深浅由 data-scheme 控制（light / dark），主题由 data-theme 控制（气质）。
+ * 二者是**两个维度**：将来加新主题只需新增一段变量，不需要碰组件。
+ * ========================================================================== */
+
+/* ---------------------------- 基础层（与主题无关） ---------------------------- */
+:root {
+  /* 间距：4px 基准 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* 字号（正文 16px 起，行高 1.75 —— 中文可读性优先） */
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-base: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+  --lh-tight: 1.3;
+  --lh-normal: 1.6;
+  --lh-relaxed: 1.75;
+
+  /* 字重 */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* 过渡 */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 层级 */
+  --z-nav: 100;
+  /* 浮层（写作台的模型下拉等）：要压过正文/展示区，又低于模态框 */
+  --z-popover: 900;
+  --z-modal: 1000;
+  --z-toast: 2000;
+}
+
+/* ============================================================================
+ * 主题 1 · Clay 奶油（浅色 · 手作温度）
+ * 参考：Clay 官网 —— 奶油纸底 + 燕麦边框 + 大圆角 + 硬偏移阴影
+ * ========================================================================== */
+:root[data-theme='clay'] {
+  color-scheme: light;
+
+  --bg: #faf9f7;
+  --bg-subtle: #f3efe6;
+  --surface: #ffffff;
+  --surface-2: #f3efe6;
+  --surface-hover: #f7f3ea;
+
+  --fg: #111111;
+  --fg-2: #6b6459;
+  --fg-3: #a39a8c;
+  --fg-inverse: #fdfbf7;
+
+  --accent: #0a0a0a;
+  --accent-fg: #ffffff;
+  --accent-soft: #e8f3d9;
+  --accent-soft-fg: #4a6b28;
+
+  --border: #e6e0d4;
+  --border-strong: #dad4c8;
+
+  --danger: #b4453f;
+  --danger-soft: #fbe9e7;
+  --warning: #a1650b;
+  --warning-soft: #fdf3e0;
+  --success: #4a6b28;
+  --success-soft: #eaf4de;
+
+  --shadow-card: -3px 4px 0 #eee9df;
+  --shadow-pop: -4px 6px 0 #e2dbcd;
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-display: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+
+  --hero-bg: linear-gradient(135deg, #1a1a1a 0%, #2e2a24 100%);
+  --hero-fg: #fdfbf7;
+
+  --focus-ring: 0 0 0 3px rgba(10, 10, 10, 0.18);
+}
+
+/* ============================================================================
+ * 主题 2 · 紫罗兰梦境（浅色 · 梦幻）
+ * 参考：豆包那版的紫色语言，但渐变只做焦点、不做满铺
+ * ========================================================================== */
+:root[data-theme='violet'] {
+  color-scheme: light;
+
+  --bg: #f6f4ff;
+  --bg-subtle: #efeafd;
+  --surface: #ffffff;
+  --surface-2: #f3e8ff;
+  --surface-hover: #faf7ff;
+
+  --fg: #2e1f52;
+  --fg-2: #6b5c8f;
+  --fg-3: #a094c4;
+  --fg-inverse: #ffffff;
+
+  --accent: #7c3aed;
+  --accent-fg: #ffffff;
+  --accent-soft: #f3e8ff;
+  --accent-soft-fg: #6d28d9;
+
+  --border: #ece7fa;
+  --border-strong: #ddd3f5;
+
+  /* M7b：原 #c026d3（洋红）在白色卡片上 4.71:1、在页底 #f6f4ff 上只有 4.33:1，
+     而且色调与 --accent(#7c3aed) 同族 —— 截图里「删除」按钮和错误文案读起来像强调色，
+     不像"出错/危险"。改成偏红的玫红 #c2185b（白底 5.87:1、页底 5.40:1，都过 AA），
+     任务书建议的 #d92d6b 在页底只有 4.25:1，反而掉到 AA 以下，故取更深的这一档。 */
+  --danger: #c2185b;
+  --danger-soft: #fde9ef;
+  --warning: #b45309;
+  --warning-soft: #fef3e2;
+  --success: #4a6b28;
+  --success-soft: #eaf4de;
+
+  /* M7b：原 0 2px 12px / 9% 紫在实际截图里几乎看不出来（卡片本来就比页底浅一档），
+     提到 4px/18% 并补一层 1px 贴边，让"浮起来"的层次可辨 —— 仍然是柔紫，不是硬阴影。 */
+  --shadow-card: 0 4px 18px rgba(109, 40, 217, 0.16), 0 1px 2px rgba(109, 40, 217, 0.1);
+  --shadow-pop: 0 10px 32px rgba(109, 40, 217, 0.22);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-display: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+
+  --hero-bg: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 45%, #c084fc 100%);
+  --hero-fg: #ffffff;
+
+  --focus-ring: 0 0 0 3px rgba(124, 58, 237, 0.24);
+}
+
+/* ============================================================================
+ * 主题 3 · 霓虹深空（深色 · 科技）
+ * 参考：Runway / ElevenLabs 的深色影像工具气质 + 青色辉光
+ * ========================================================================== */
+:root[data-theme='neon'] {
+  color-scheme: dark;
+
+  --bg: #07070e;
+  --bg-subtle: #0b0b14;
+  --surface: #0f0f1a;
+  --surface-2: #15152a;
+  --surface-hover: #17172e;
+
+  --fg: #e8eaff;
+  /* M7b：原 #8b8ba8 在卡片 #0f0f1a 上 5.76:1（过 AA 但偏灰）—— 11–12px 的时间戳、
+     标签、"未配置" 说明在近黑底上读起来发糊。提到 #9a9ac0 → 卡片上 7.03:1、
+     页底 7.42:1，仍是冷灰，与 --accent(#22d3ee) 同级不抢眼。 */
+  --fg-2: #9a9ac0;
+  --fg-3: #5b5b75;
+  --fg-inverse: #07070e;
+
+  --accent: #22d3ee;
+  --accent-fg: #04202a;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --accent-soft-fg: #67e8f9;
+
+  --border: #1e1e2e;
+  --border-strong: #312e81;
+
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, 0.12);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.12);
+
+  /* M7b：原 0 0 24px / 8% 青辉光在近黑底上不可见（截图里卡片只剩 1px 边框）。
+     提到 2px/20px/20% 才看得出"浮起来"；shadow-pop 同步拉开一档。 */
+  --shadow-card: 0 2px 20px rgba(34, 211, 238, 0.2);
+  --shadow-pop: 0 0 52px rgba(34, 211, 238, 0.28);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-display: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  --hero-bg: linear-gradient(135deg, #111827 0%, #1e1b4b 60%, #312e81 100%);
+  --hero-fg: #e0e7ff;
+
+  --focus-ring: 0 0 0 3px rgba(34, 211, 238, 0.35);
+}
+
+/* ============================================================================
+ * 主题 4 · 暖夜琥珀（深色 · 深夜）
+ * 参考：为"凌晨三点睁眼记梦"设计 —— 深但不冷，暖光不刺破困意
+ * ========================================================================== */
+:root[data-theme='amber'] {
+  color-scheme: dark;
+
+  --bg: #16100c;
+  --bg-subtle: #1c1510;
+  --surface: #211812;
+  --surface-2: #2a1f16;
+  --surface-hover: #2e221a;
+
+  --fg: #fbe8cf;
+  --fg-2: #a8876a;
+  --fg-3: #8a6f57;
+  --fg-inverse: #241a12;
+
+  --accent: #fcd34d;
+  --accent-fg: #241a12;
+  --accent-soft: rgba(251, 191, 36, 0.13);
+  --accent-soft-fg: #fcd34d;
+
+  --border: #34261b;
+  --border-strong: #5c3a1e;
+
+  --danger: #ff8b84;
+  --danger-soft: rgba(255, 139, 132, 0.12);
+  --warning: #f0b429;
+  --warning-soft: rgba(240, 180, 41, 0.13);
+  --success: #8bcf6b;
+  --success-soft: rgba(139, 207, 107, 0.12);
+
+  /* 深色底上纯黑阴影几乎不可见（实测 Δ≈4/255），改用「暖色顶边 + 更深的落影」：
+     顶边那道 1px 暖光让卡片看起来是「浮起的面」，而不是靠明暗差硬撑。 */
+  --shadow-card:
+    inset 0 1px 0 rgba(255, 214, 160, 0.09),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-pop:
+    inset 0 1px 0 rgba(255, 214, 160, 0.12),
+    0 16px 44px rgba(0, 0, 0, 0.62);
+  --shadow-inset: inset 0 1px 0 rgba(255, 220, 170, 0.09);
+
+  --radius-sm: 11px;
+  --radius-md: 15px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-display: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+
+  --hero-bg: linear-gradient(135deg, #3d2416 0%, #5c3418 55%, #8a4b1d 100%);
+  --hero-fg: #fde8c8;
+
+  --focus-ring: 0 0 0 3px rgba(252, 211, 77, 0.3);
+}
+
+/* ============================================================================
+ * 兼容层：旧代码用的是 --muted / --card，映射到新令牌
+ * 目的：迁移期间不必一次性改完 143 处，先把变量对上，再逐步替换。
+ * ========================================================================== */
+:root {
+  --muted: var(--fg-2);
+  --card: var(--surface);
+}
+
+/* ============================================================================
+ * M7 迁移补缺（执行座补，2026-10-20）
+ * ----------------------------------------------------------------------------
+ * 迁 182 处硬编码颜色时发现：下面几类语义四套主题都要，但原令牌表没有对应的键。
+ * 每个主题各给一份 —— 这样「加新主题 / 调色只改 tokens.css」这条在阶段二才能成立。
+ * 追加在兼容层之后：同优先级、后出现者生效，只是补键，不改上面任何已有值。
+ * ========================================================================== */
+
+:root[data-theme='clay'] {
+  --backdrop: rgba(24, 20, 14, 0.42); /* 模态遮罩 */
+  --tint-weak: rgba(17, 17, 17, 0.025); /* 只读块 / 运行日志条：比 surface-2 更轻的一层 */
+  --tint: rgba(17, 17, 17, 0.06); /* 小徽标底（序号、计数…） */
+  --media-bg: #ece6d9; /* 缩略图 letterbox 底（object-fit: contain 的留白） */
+  --info: #3f6f9e; /* 提示（是说明，不是错误） */
+  --info-soft: #eaf1f8;
+  --link: #2f5d8a; /* 正文里的链接色（不写就落回浏览器默认蓝紫） */
+}
+
+:root[data-theme='violet'] {
+  --backdrop: rgba(46, 31, 82, 0.38);
+  --tint-weak: rgba(46, 31, 82, 0.03);
+  --tint: rgba(46, 31, 82, 0.07);
+  --media-bg: #efeafa;
+  --info: #4a6fa5;
+  --info-soft: #edeffb;
+  --link: #6d28d9;
+}
+
+:root[data-theme='amber'] {
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --tint-weak: rgba(255, 220, 170, 0.03);
+  --tint: rgba(255, 220, 170, 0.09);
+  --media-bg: #1a1310;
+  --info: #7fa9d9;
+  --info-soft: rgba(127, 169, 217, 0.12);
+  --link: #f0b861;
+}
+
+:root[data-theme='neon'] {
+  --backdrop: rgba(3, 3, 8, 0.72);
+  --tint-weak: rgba(232, 234, 255, 0.03);
+  --tint: rgba(232, 234, 255, 0.09);
+  --media-bg: #0a0a12;
+  --info: #7dd3fc;
+  --info-soft: rgba(125, 211, 252, 0.12);
+  --link: #22d3ee;
+}
+
+/* 系统偏好兜底：未显式选主题时，深色偏好 → amber，浅色偏好 → clay */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #16100c;
+    --fg: #fbe8cf;
+    --muted: #a8876a;
+    --accent: #fcd34d;
+    --border: #34261b;
+    --card: #211812;
+  }
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #faf9f7;
+    --fg: #111111;
+    --muted: #6b6459;
+    --accent: #0a0a0a;
+    --border: #e6e0d4;
+    --card: #ffffff;
+  }
+}

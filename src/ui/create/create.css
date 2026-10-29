@@ -1,0 +1,545 @@
+/* 创作页（M5a2）：只做"能读、不挤"的最低限度样式。
+   视觉方案等 UI 评审后再定（UI-SKELETON §5：功能未定不做视觉重构）。 */
+
+.create-page-header {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.create-record-summary {
+  margin: -4px 0 12px;
+  /* 摘要只有一行，超长省略；不要让长记录把 tab 推到屏幕外 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.create-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.create-tab.active {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.create-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.create-model {
+  max-width: 420px;
+}
+
+.create-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.create-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.create-cost {
+  white-space: nowrap;
+}
+
+.create-issues ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.create-raw {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.artifact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifact-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  /* M7b：创作页的产物卡片同属「卡片类」，与 .card / .canvas-card 一致挂签名阴影 */
+  box-shadow: var(--shadow-card);
+}
+
+.artifact-card h4 {
+  margin: 0 0 6px;
+}
+
+.artifact-body {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+
+.artifact-symbols {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.artifact-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.artifact-prompt {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+}
+
+.direction-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.direction {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.direction h5 {
+  margin: 0 0 6px;
+}
+
+.direction p {
+  margin: 0 0 4px;
+}
+
+.direction ol {
+  margin: 6px 0 6px;
+  padding-left: 20px;
+}
+
+/* ---------------------------------------------------------------- */
+/* P2 创作入口页（`/create` 不带 recordId 时）                        */
+/* 视觉基准：docs/mockups/P2-create-hub-mockup.html(?shot=clay)       */
+/* 只消费令牌，不写任何颜色字面量。                                    */
+/* ---------------------------------------------------------------- */
+
+/* 外壳：入口页要铺满（同首页做法），其它页仍是 860px 单栏 */
+.app-main:has(> .page-create-hub) {
+  max-width: 1440px;
+  padding: 26px 28px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-create-hub {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hub-head {
+  flex: 0 0 auto;
+  margin-bottom: 16px;
+}
+
+.hub-head h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+}
+
+.hub-head p {
+  margin: 3px 0 0;
+}
+
+.hub-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+}
+
+.hub-tile {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+a.hub-tile {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+a.hub-tile:hover {
+  transform: translateY(-1px);
+}
+
+.hub-tile-wide {
+  grid-column: 1 / -1;
+}
+
+/* 两张卡的标题必须落在同一水平线：标题都是第一子元素、padding-top 相同。
+   「主推」标签做成 h3 里的 inline-block，不新增一行、不改变 h3 的行高。 */
+.hub-tile-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.hub-kicker {
+  display: inline-block;
+  vertical-align: 2px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-soft-fg);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.hub-tile-desc {
+  margin: 5px 0 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--fg-2);
+}
+
+/* 工作流卡里的静态节点图（不是真实画板，位置用百分比随高度缩放） */
+.hub-flow {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.hub-flow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+  background-size: 14px 14px;
+  opacity: 0.5;
+}
+
+.hub-node {
+  position: absolute;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hub-node-hot {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+/* 写作工作台的三栏静态示意 */
+.hub-ide {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.55fr 1fr;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.hub-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.hub-pane-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--fg-3);
+}
+
+.hub-pane-chip {
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.hub-pane-line {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border-strong);
+  opacity: 0.55;
+}
+
+.hub-pane-line-short {
+  width: 62%;
+}
+
+.hub-go {
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+/* 单卡创作：最近 7 条 + 「查看全部」，4 列 × 2 行吃满剩余高度 */
+.hub-recs {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 9px;
+}
+
+.hub-rec {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.hub-rec:hover {
+  border-color: var(--accent);
+}
+
+.hub-rec-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.hub-rec-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 6px;
+  font-size: 10px;
+  color: var(--fg-2);
+}
+
+.hub-rec-tag {
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-soft-fg);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.hub-rec-more {
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+.hub-foot {
+  flex: 0 0 auto;
+  padding: 8px 0 12px;
+  font-size: 10.5px;
+  color: var(--fg-3);
+}
+
+/* 窄屏：两张卡上下排，高度回到内容撑（不强行一屏） */
+@media (max-width: 900px) {
+  .app-main:has(> .page-create-hub) {
+    padding: 18px 16px 0;
+  }
+
+  .hub-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: auto;
+  }
+
+  .hub-flow {
+    min-height: 150px;
+  }
+
+  .hub-recs {
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: minmax(84px, auto);
+  }
+}
+
+/* 生视频区块嵌在创作页的 tab 面板里：外层已经是卡片了，内层卡片去壳
+   —— 不然就是「盒子里套一个盒子」，与解梦 / 生图两个 tab 的观感也不一致。 */
+.create-panel .video-section > .card {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.create-panel .video-section > .card:first-child {
+  margin-top: 0;
+}
+
+/* 详情页的「进入创作」与产物区 */
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+/* ---------------------------------------------------------------- */
+/* 会话（M5a3）：只做可读性最低限度，视觉等评审                        */
+/* ---------------------------------------------------------------- */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.thread-warn {
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--warning-soft);
+  padding: 8px 10px;
+}
+
+.thread-warn p {
+  margin: 0 0 6px;
+}
+
+.thread-turns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.thread-turn {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.thread-role {
+  flex: 0 0 auto;
+  min-width: 32px;
+  padding-top: 2px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.thread-body {
+  flex: 1 1 auto;
+  /* 长串（模型有时不换行）不许把卡片撑出屏幕 */
+  min-width: 0;
+}
+
+.thread-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thread-turn.user .thread-text {
+  border-left: 3px solid var(--border);
+  padding-left: 8px;
+}
+
+.thread-turn-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.thread-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.thread-composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  resize: vertical;
+}
+
+.thread-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}

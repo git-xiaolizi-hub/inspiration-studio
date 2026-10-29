@@ -1,0 +1,77 @@
+/* 视频模块自己的样式（不写进全局 styles.css，删目录即彻底移除） */
+
+.video-status {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+}
+
+.video-status p {
+  margin: 0.2rem 0;
+}
+
+.video-phases {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.video-phases li {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+  font-size: 0.85em;
+}
+
+.video-phases li[data-active='true'] {
+  border-color: var(--accent);
+  color: var(--accent-soft-fg);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+/* 页面头：全局 .page-header 是给"标题 + 工具栏"的横排；这里标题旁边的说明很长，
+   横排会把「视频生成」挤成两行（真浏览器截图里看到的）。只在视频页改竖排，不动全局样式。
+   ⚠️ 必须写成 `.page-header.video-page-header`（两个类）：单类 `.video-page-header` 与全局
+   `.page-header` 同权重，而 styles.css 在打包顺序里更靠后，`align-items: center` 会把标题又拉回居中。 */
+.page-header.video-page-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.video-page-header h2 {
+  white-space: nowrap;
+}
+
+/* R6：生视频按钮上方的一行小字（「本次约 ¥45.36 · 30s 720p」）
+   委托人要求 10.5px + var(--fg-2)：它只是提醒，不该和主按钮抢注意力。 */
+.estimate-inline {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* 通道徽章：不合样式会连成「画质有限可能排队 429不计费」 */
+.video-channel-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0;
+}
+
+.video-channel-badges span {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+  font-size: 0.85em;
+}
