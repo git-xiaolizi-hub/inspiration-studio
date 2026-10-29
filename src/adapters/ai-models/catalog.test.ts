@@ -1145,7 +1145,7 @@ describe('M3R6 §5-2 复制模型表到其他连接（深拷贝）', () => {
   });
 });
 
-describe('M3R6 §5-4 / §5-5 启用标记与「只认当前连接」', () => {
+describe('M3R6 §5-4 / §5-5 启用标记与多连接', () => {
   it('取消启用后 pickModel / listModelsByCap 都不再返回它；重新勾上就回来', () => {
     let catalog = addConnection(createDefaultCatalog(), 'zhipu', { baseUrl: 'https://a.example.com' }).catalog;
     const connectionId = findProvider(catalog, 'zhipu')?.connections[0].id ?? '';
@@ -1165,7 +1165,7 @@ describe('M3R6 §5-4 / §5-5 启用标记与「只认当前连接」', () => {
     expect(pickModel(catalog, 'image').model?.modelId).toBe('cogview-3-flash');
   });
 
-  it('pickModel 只认 activeConnection 的模型表：另一条连接配了生图模型也算「未配置」', () => {
+  it('第二条连接里的模型同样可用：pickModel 带出的是它自己那条连接', () => {
     let catalog = createDefaultCatalog();
     // A：只有预填的文本模型
     const a = addConnection(catalog, 'zhipu', { label: 'A', baseUrl: 'https://a.example.com' });
@@ -1175,16 +1175,15 @@ describe('M3R6 §5-4 / §5-5 启用标记与「只认当前连接」', () => {
     catalog = setActiveConnection(b.catalog, 'zhipu', b.connection.id);
     catalog = applyPresetTag(catalog, 'zhipu', findPreset('cogview-3-flash'));
 
-    // 当前连接是 B → 找得到
     expect(pickModel(catalog, 'image').connection?.id).toBe(b.connection.id);
 
-    // 切回 A：A 的模型表里没有生图模型 → 未配置（即使 B 里有）
+    // 「当前连接」切回 A —— B 里那把 Key 的生图模型依然可用，
+    // 而且带出来的是 B 的连接（base_url / key 都对得上）
     catalog = setActiveConnection(catalog, 'zhipu', a.connection.id);
     const result = pickModel(catalog, 'image');
-    expect(result.ok).toBe(false);
-    expect(result.hint).toContain('你还没有配置生图模型');
-    // 但列表类接口（视频页）也只列当前连接的模型表
-    expect(listModelsByCap(catalog, 'image')).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(result.model?.modelId).toBe('cogview-3-flash');
+    expect(result.connection?.id).toBe(b.connection.id);
   });
 
   it('enabled 存盘读回：没写的按启用，显式 false 的保持停用', async () => {

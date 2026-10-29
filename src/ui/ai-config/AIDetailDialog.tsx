@@ -15,8 +15,7 @@ import {
   MODEL_CAPS,
   MODEL_ROLES,
   ROLE_CAP,
-  ROLE_LABELS,
-  activeConnectionOf,
+  ROLE_LABELS,
   listModelsByCap,
   modelKeyOf,
 } from '../../adapters/ai-models/catalog';
@@ -39,11 +38,8 @@ function candidatesFor(catalog: AICatalog | null, cap: ModelCap): RoleCandidate[
   if (!catalog) return [];
   const result: RoleCandidate[] = [];
   for (const ref of listModelsByCap(catalog, cap)) {
-    const provider = catalog.providers.find((item) => item.id === ref.providerId);
-    const connection = provider ? activeConnectionOf(provider) : undefined;
-    if (!connection) continue;
     result.push({
-      key: modelKeyOf(ref.providerId, connection.id, ref.modelId),
+      key: modelKeyOf(ref.providerId, ref.connectionId, ref.modelId),
       label: `${ref.displayName || ref.modelId} · ${ref.providerName}`,
     });
   }
@@ -151,7 +147,7 @@ export function AIDetailDialog({
                 {showLineBefore && <div className="ai-drop-line" aria-hidden="true" />}
                 <div
                   role="listitem"
-                  className={`ai-detail-row${dragging ? ' is-dragging' : ''}${row.active ? '' : ' is-inactive'}`}
+                  className={`ai-detail-row${dragging ? ' is-dragging' : ''}`}
                   data-model-key={row.key}
                   draggable
                   onDragStart={(event) => {
@@ -179,10 +175,7 @@ export function AIDetailDialog({
                   <span className="ai-row-name" title={row.modelId}>
                     {modelLabel(row)}
                   </span>
-                  <span className="ai-row-vendor">
-                    {row.providerName}
-                    {row.active ? null : <em className="ai-row-off">未生效</em>}
-                  </span>
+                  <span className="ai-row-vendor">{row.providerName}</span>
                   <span className="ai-badges">
                     {MODEL_CAPS.filter((cap) => row.caps.includes(cap)).map((cap) => (
                       <span className={`ai-badge ai-badge-${cap}`} key={cap}>
@@ -231,7 +224,7 @@ export function AIDetailDialog({
         拖动左侧把手改顺序；触屏没有 HTML5 拖拽，用每行的 ↑ ↓ 按钮同样能挪（效果一致）。
       </p>
       <p className="ai-detail-hint">
-        标「未生效」的模型在别的连接里：配置看得见，但生成时不会用到。要用它们，先去「自由配置」把那个厂商的当前连接切过去。
+        同一家站配了两把 Key 也没关系：每个模型都记着自己在哪把 Key 下，生成时自动用对的那把。
       </p>
     </Dialog>
   );

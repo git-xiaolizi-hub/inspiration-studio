@@ -4455,20 +4455,8 @@ input[type='date'] {
   font-size: 12px;
 }
 
-/* 详情里「未生效连接」里的模型：看得见，但生成时不用 */
-.ai-detail-row.is-inactive {
-  opacity: 0.62;
-}
 
-.ai-row-off {
-  margin-left: 6px;
-  padding: 0 5px;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  color: var(--fg-3);
-  font-style: normal;
-  font-size: 10px;
-}
+
 .ai-rec-tag {
   padding: 1px 6px;
   border: 1px solid var(--border);

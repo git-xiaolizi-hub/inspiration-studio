@@ -602,7 +602,7 @@ describe('B. 推荐配置弹窗', () => {
 });
 
 describe('C0. 未生效连接的模型可见', () => {
-  it('第二把 Key 的模型不会消失：详情里列出来并标「未生效」，卡片另给数量', async () => {
+  it('第二把 Key 的模型也能用：卡片与详情都列出来，不再有「未生效」', async () => {
     let catalog = createDefaultCatalog();
     catalog = addConnection(catalog, 'linghui', {
       label: '灵绘',
@@ -629,19 +629,14 @@ describe('C0. 未生效连接的模型可见', () => {
     await seedCatalog(catalog);
     await mountCard();
 
-    // 卡片：只统计生效连接，并提示另有 N 个
-    await waitFor(() => text().includes('已配置 1 个模型'), '生效模型计数');
-    expect(text()).toContain('另有 1 个在未生效的连接里');
-
-    await click(q('.ai-chip-more, .ai-detail-open, [data-testid="ai-card-detail"]'));
+    await waitFor(() => text().includes('已配置 2 个模型'), '两把 Key 的模型都算已配置');
+    await click(q('.ai-detail-open, [data-testid="ai-card-detail"], .ai-chip-more'));
     await waitFor(() => text().includes('已配置的模型'), '详情弹窗');
 
-    // 详情：两条连接的两个模型都在，且 claude 标了「未生效」
     const rows = qa('.ai-detail-row');
     expect(rows).toHaveLength(2);
     expect(text()).toContain('claude-opus-5-5');
-    expect(text()).toContain('未生效');
-    expect(qa('.ai-detail-row.is-inactive')).toHaveLength(1);
+    expect(text()).not.toContain('未生效');
   });
 });
 

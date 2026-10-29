@@ -13,8 +13,7 @@
  * - 本地部署类厂商（只做占位，本应用这一版不调用）；
  * - 地址为空的连接（还没配好，不算「已配置」）。
  */
-import {
-  activeConnectionOf,
+import {
   isLocalProvider,
   modelKeyOf,
 } from '../../adapters/ai-models/catalog';
@@ -31,8 +30,6 @@ export interface ConfiguredModel {
   modelId: string;
   displayName: string;
   caps: ModelCap[];
-  /** 是否属于该厂商「当前生效」的那条连接（生成时只用生效连接） */
-  active: boolean;
 }
 
 /** 目录 → 扁平的已配置模型（顺序 = 厂商顺序 + 表内顺序，未排序） */
@@ -40,8 +37,7 @@ export function configuredModels(catalog: AICatalog): ConfiguredModel[] {
   const rows: ConfiguredModel[] = [];
   for (const provider of catalog.providers) {
     if (isLocalProvider(provider)) continue;
-    const active = activeConnectionOf(provider);
-    // 列出**所有**连接里的模型：只列生效连接会让用户以为第二把 Key 的模型丢了
+    // 列出**所有**连接里的模型：同一厂商多把 Key 时，每条连接里的模型都是可用的
     for (const connection of provider.connections) {
       if (connection.baseUrl.trim() === '') continue;
       for (const model of connection.models) {
@@ -57,7 +53,6 @@ export function configuredModels(catalog: AICatalog): ConfiguredModel[] {
           modelId,
           displayName: model.displayName.trim() === '' ? modelId : model.displayName,
           caps: [...model.caps],
-          active: active?.id === connection.id,
         });
       }
     }

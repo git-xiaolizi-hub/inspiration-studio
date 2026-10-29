@@ -1350,8 +1350,8 @@ export function setActiveConnection(
 }
 
 /**
- * 模型表的操作一律落在「当前连接」上（M3R6：模型表在连接里，不在厂商上）。
- * 上层（UI / 视频页）通过这两个函数拿模型，不要直读 `provider.models`（已删除）。
+ * 「当前连接」现在只剩一个作用：**新加的模型默认存到哪条**（以及配置页里编辑哪张表）。
+ * 它**不再**决定哪些模型能用 —— 同一厂商的所有连接里的模型都能被选中、都能生成。
  */
 export function activeConnectionOf(provider: Provider): Connection | undefined {
   return provider.connections.find((item) => item.id === provider.activeConnectionId);
@@ -1688,13 +1688,15 @@ export function resolveRoleModel(
 function pickFirstAvailable(catalog: AICatalog, cap: ModelCap): PickModelResult {
   for (const provider of catalog.providers) {
     if (isLocalProvider(provider)) continue;
-    const connection = activeConnectionOf(provider);
-    if (!connection || !isUsable(connection)) continue;
-    const model = connection.models.find(
-      (item) =>
-        item.enabled !== false && item.modelId.trim() !== '' && item.caps.includes(cap),
-    );
-    if (model) return { ok: true, provider, connection, model };
+    // 同一个厂商的所有连接都参与兜底：多把 Key 各自挂着不同模型时，不该只认一条
+    for (const connection of provider.connections) {
+      if (!isUsable(connection)) continue;
+      const model = connection.models.find(
+        (item) =>
+          item.enabled !== false && item.modelId.trim() !== '' && item.caps.includes(cap),
+      );
+      if (model) return { ok: true, provider, connection, model };
+    }
   }
   return { ok: false, hint: capHint(cap) };
 }
@@ -1737,6 +1739,8 @@ export function pickModelForRole(
 export interface VideoModelRef {
   providerId: string;
   providerName: string;
+  /** 这条模型属于哪条连接（同一厂商多把 Key 时，key/地址必须取这条的） */
+  connectionId: string;
   modelId: string;
   displayName: string;
   usable: boolean;
@@ -1744,21 +1748,31 @@ export interface VideoModelRef {
 
 export function listModelsByCap(catalog: AICatalog, cap: ModelCap): VideoModelRef[] {
   const result: VideoModelRef[] = [];
+  const seen = new Set<string>();
   for (const provider of catalog.providers) {
     // 本地部署类只做占位：列出来只会让人以为选中就能跑（真正接入在画板/节点）
     if (isLocalProvider(provider)) continue;
-    const connection = activeConnectionOf(provider);
-    for (const model of connection?.models ?? []) {
-      if (model.enabled === false) continue;
-      if (!model.caps.includes(cap)) continue;
-      if (model.modelId.trim() === '') continue;
-      result.push({
-        providerId: provider.id,
-        providerName: provider.name,
-        modelId: model.modelId,
-        displayName: model.displayName || model.modelId,
-        usable: isUsable(connection),
-      });
+    // **遍历所有连接**：同一家站的两把 Key（比如一把生图、一把 claude）都应该能用，
+    // 不该有「生效连接」这种只让一把 Key 生效的隐藏规则。
+    for (const connection of provider.connections) {
+      if (!isUsable(connection)) continue;
+      for (const model of connection.models) {
+        if (model.enabled === false) continue;
+        if (!model.caps.includes(cap)) continue;
+        const modelId = model.modelId.trim();
+        if (modelId === '') continue;
+        const dedupeKey = `${provider.id}:${modelId}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        result.push({
+          providerId: provider.id,
+          providerName: provider.name,
+          connectionId: connection.id,
+          modelId,
+          displayName: model.displayName || modelId,
+          usable: true,
+        });
+      }
     }
   }
   return result;
