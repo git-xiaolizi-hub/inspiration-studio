@@ -1,4 +1,4 @@
-# 灵感工坊 · Inspiration Studio
+# 灵感工坊 · Inspiration Studio （AI写的垃圾勿看）
 
 给 AI 视频创作者用的**灵感工作台**：记梦/灵感 → 让模型扩成故事与脚本 → 出分镜 → 生图/生视频。
 
