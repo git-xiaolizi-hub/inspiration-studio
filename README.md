@@ -4,6 +4,10 @@
 
 **纯前端、本地优先**：没有后端、没有账号；数据在浏览器 IndexedDB 里，API Key 由用户自己填。
 
+> **在线试用**：<https://git-xiaolizi-hub.github.io/inspiration-studio/>
+>
+> 网页版不含本地语音模型（体积原因，仓库不带权重文件）；需要完全离线的语音转写请用桌面版（开发中）。
+
 ---
 
 ## 跑起来
