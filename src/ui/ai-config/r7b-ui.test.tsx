@@ -870,12 +870,11 @@ describe('E. 组头注册链接 + 模型行的「1M」声明', () => {
     ]);
   });
 
-  it('勾上 1M 会写进配置；再打开仍是勾着的，取消勾就清掉', async () => {
+  it('文本模型默认勾 1M；取消勾 = 明确 128k，两个值都能落库并回填', async () => {
     await mountCard();
     await openRecommend();
-    const toggle = byLabel<HTMLButtonElement>('1M 上下文 1-1') as HTMLButtonElement;
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    await click(toggle);
+
+    // deepseek-flash 是文本模型 → 一进来就是勾着的
     expect(byLabel('1M 上下文 1-1')?.getAttribute('aria-pressed')).toBe('true');
 
     await setValue(byLabel<HTMLInputElement>('API Key 1-1') as HTMLInputElement, 'sk-deepseek');
@@ -883,22 +882,25 @@ describe('E. 组头注册链接 + 模型行的「1M」声明', () => {
     await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
 
     const saved = await loadCatalog();
-    const deepseek = saved.providers.find((provider) => provider.id === 'deepseek');
-    const model = deepseek?.connections[0]?.models[0];
-    expect(model?.modelId).toBe('deepseek-flash');
-    expect(model?.contextLength).toBe(1048576);
+    const first = saved.providers.find((provider) => provider.id === 'deepseek')?.connections[0]?.models[0];
+    expect(first?.modelId).toBe('deepseek-flash');
+    expect(first?.contextLength).toBe(1048576);
 
-    // 再打开：回填成勾选状态
+    // 再打开：仍是勾着
     await openRecommend(false);
     const again = byLabel<HTMLButtonElement>('1M 上下文 1-1') as HTMLButtonElement;
     expect(again.getAttribute('aria-pressed')).toBe('true');
 
-    // 取消勾 + 保存 → 清掉（回到 128k 默认）
+    // 取消勾 → 保存成明确的 128k（不是"未声明"）
     await click(again);
+    expect(byLabel('1M 上下文 1-1')?.getAttribute('aria-pressed')).toBe('false');
     await click(q('[data-testid="ai-recommend-save"]'));
     await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
     const after = await loadCatalog();
-    expect(after.providers.find((p) => p.id === 'deepseek')?.connections[0]?.models[0]?.contextLength)
-      .toBeUndefined();
+    expect(
+      after.providers.find((provider) => provider.id === 'deepseek')?.connections[0]?.models[0]
+        ?.contextLength,
+    ).toBe(128000);
   });
 });

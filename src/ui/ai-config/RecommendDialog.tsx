@@ -30,6 +30,7 @@ import {
   makeId,
   parseMultiplier,
   presetTagsFor,
+  presetTagById,
   protocolEndpointTitle,
   saveCatalog,
   updateConnection,
@@ -49,6 +50,7 @@ import { RecMenu } from './RecMenu';
 import type { RecMenuOption } from './RecMenu';
 import { canSyncTest, listModels, runSelfTest } from '../../adapters/ai-models/client';
 import { formatFxHint } from '../../core/fx';
+import { DEFAULT_CONTEXT_WINDOW } from '../create/context-budget';
 import { useUsdCny } from './use-usd-cny';
 import { describeError } from '../format';
 
@@ -57,6 +59,20 @@ const CUSTOM = 'custom';
 
 /** 勾「1M」时写进 ModelEntry.contextLength 的值 */
 const ONE_MILLION = 1_048_576;
+
+/**
+ * 一条模型默认的上下文窗口：
+ * - **文本模型默认按 1M**（现在主流长文模型都至少 1M，先按它能用来估预算，
+ *   用户觉得不对可以取消勾选 → 变成明确 128k）；
+ * - 生图 / 视频 / 音频模型不涉及长上下文，不勾；
+ * - 名录里本来就写了窗口的（如 kimi）用它自己那个。
+ */
+function defaultContextFor(modelId: string): number | undefined {
+  const tag = presetTagById(modelId);
+  if (!tag) return undefined;
+  if (tag.caps.includes('text')) return ONE_MILLION;
+  return tag.contextLength;
+}
 
 type VendorChoice = BuiltinProviderId | typeof CUSTOM;
 
@@ -176,7 +192,8 @@ function collectModeMultipliers(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 function newModel(modelId: string, contextLength?: number): DraftModel {
-  return { id: makeId('dm'), modelId, ...(contextLength ? { contextLength } : {}) };
+  const ctx = contextLength ?? defaultContextFor(modelId);
+  return { id: makeId('dm'), modelId, ...(ctx ? { contextLength: ctx } : {}) };
 }
 
 function newKey(
@@ -675,7 +692,11 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       ...key,
       models: key.models.map((model) =>
         model.id === modelRowId
-          ? { ...model, contextLength: model.contextLength === ONE_MILLION ? undefined : ONE_MILLION }
+          ? {
+              ...model,
+              contextLength:
+                model.contextLength === ONE_MILLION ? DEFAULT_CONTEXT_WINDOW : ONE_MILLION,
+            }
           : model,
       ),
     }));
@@ -684,7 +705,11 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
   function setModel(groupId: string, keyId: string, modelRowId: string, modelId: string): void {
     updateKey(groupId, keyId, (key) => ({
       ...key,
-      models: key.models.map((model) => (model.id === modelRowId ? { ...model, modelId } : model)),
+      models: key.models.map((model) =>
+        model.id === modelRowId
+          ? { ...model, modelId, contextLength: defaultContextFor(modelId) }
+          : model,
+      ),
     }));
   }
 

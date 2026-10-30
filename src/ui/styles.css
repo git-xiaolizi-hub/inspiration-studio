@@ -4464,7 +4464,7 @@ input[type='date'] {
   gap: 12px;
 }
 
-.ai-rec-head .modal-sub { flex: 1; margin: 0; }
+.ai-rec-head .modal-sub { flex: 1; margin: 0 0 2px; }
 
 .ai-rec-recommend {
   flex: none;
@@ -4481,7 +4481,7 @@ input[type='date'] {
 .ai-rec-recommend:hover { border-color: var(--accent); color: var(--accent); }
 
 .ai-rec-why {
-  margin: 8px 0 2px;
+  margin: 10px 0 18px;
   padding: 0;
   list-style: none;
   display: grid;

@@ -311,7 +311,7 @@ describe('三层模型：厂商 → 连接 → 模型', () => {
 });
 
 describe('预设标签（§2 表格，原样）', () => {
-  it('智谱 8 / DeepSeek 2 / 方舟 3 / Kimi 2 / 中转 5 / 百炼 7 / MiniMax 4 / 本地 2 条，modelId 与 caps 逐条对得上', () => {
+  it('智谱 8 / DeepSeek 2 / 方舟 3 / Kimi 2 / 中转 6 / 百炼 7 / MiniMax 4 / 本地 2 条，modelId 与 caps 逐条对得上', () => {
     expect(PRESET_TAGS.zhipu.map((tag) => [tag.modelId, tag.caps.join('+')])).toEqual([
       ['glm-5.3-flash', 'text+vision'],
       ['glm-4.7-flash', 'text'],
@@ -357,6 +357,7 @@ describe('预设标签（§2 表格，原样）', () => {
       'gpt-image-2.5-flare',
       'gpt-image-2.5-sunburst',
       'gemini-4-argon',
+      'gemini-4-carbon',
     ]);
     // R7a：这两家从「没有云端模型标签」变成有标签了（委托人指定的 7 + 4 条）
     expect(PRESET_TAGS.dashscope.map((tag) => tag.modelId)).toEqual([
@@ -424,7 +425,7 @@ describe('预设标签（§2 表格，原样）', () => {
 
   it('自定义厂商同时拿到「中转 + 本地」标签，内置厂商只拿自己那组', () => {
     const custom = { id: 'custom:abc', builtin: false };
-    expect(presetTagsFor(custom)).toHaveLength(7);
+    expect(presetTagsFor(custom)).toHaveLength(8);
     expect(presetTagsFor({ id: 'ark', builtin: true })).toHaveLength(3);
     // 官方外国厂商只拿自己的那条（同一份定义，按 modelId 过滤）
     expect(presetTagsFor({ id: 'openai', builtin: true }).map((tag) => tag.modelId)).toEqual([
@@ -437,14 +438,16 @@ describe('预设标签（§2 表格，原样）', () => {
     ]);
     expect(presetTagsFor({ id: 'gemini', builtin: true }).map((tag) => tag.modelId)).toEqual([
       'gemini-4-argon',
+      'gemini-4-carbon',
     ]);
-    // 灵绘是中转站，拿到整组 5 条
+    // 灵绘是中转站，拿到整组 6 条
     expect(presetTagsFor({ id: 'linghui', builtin: true }).map((tag) => tag.modelId)).toEqual([
       'claude-opus-5-5',
       'gpt-6.1-sol',
       'gpt-image-2.5-flare',
       'gpt-image-2.5-sunburst',
       'gemini-4-argon',
+      'gemini-4-carbon',
     ]);
     // R7a：这两家有云端模型标签了（7 + 4 条），不再是空标签 + tagHint
     expect(presetTagsFor({ id: 'dashscope', builtin: true })).toHaveLength(7);

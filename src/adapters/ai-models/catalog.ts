@@ -876,6 +876,15 @@ export const PRESET_TAGS: Record<PresetGroup, readonly PresetTag[]> = {
       price: null,
       priceStatus: '未核实',
     },
+    {
+      label: 'gemini-4-carbon（文本+视觉，刚发布，写作更强）',
+      modelId: 'gemini-4-carbon',
+      contextLength: 1048576,
+      caps: ['text', 'vision'],
+      note: '需中转 · 有限范围内发布；实测写作第一，但现阶段多数账号还用不了',
+      price: null,
+      priceStatus: '未核实',
+    },
   ],
   local: [
     {
@@ -904,7 +913,7 @@ export const PRESET_TAGS: Record<PresetGroup, readonly PresetTag[]> = {
 const VENDOR_RELAY_FILTER: Partial<Record<BuiltinProviderId, readonly string[]>> = {
   openai: ['gpt-6.1-sol', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'],
   anthropic: ['claude-opus-5-5'],
-  gemini: ['gemini-4-argon'],
+  gemini: ['gemini-4-argon', 'gemini-4-carbon'],
 };
 
 /** 自定义厂商拿到「中转 + 本地」两组标签；内置厂商各拿自己那组 */
@@ -915,6 +924,17 @@ export function presetTagsFor(provider: Pick<Provider, 'id' | 'builtin'>): reado
   if (filter) return PRESET_TAGS.relay.filter((tag) => filter.includes(tag.modelId));
   const group: PresetGroup | undefined = id === 'linghui' ? 'relay' : (id as PresetGroup);
   return (group && PRESET_TAGS[group]) || [];
+}
+
+/** 按 modelId 在**全部**预设里找一条（重名时以先出现的为准，够用） */
+export function presetTagById(modelId: string): PresetTag | undefined {
+  const id = modelId.trim();
+  if (id === '') return undefined;
+  for (const group of Object.values(PRESET_TAGS)) {
+    const hit = group.find((tag) => tag.modelId === id);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 /** 新建自定义厂商时的两个模板：中转站 / 本地部署 */
