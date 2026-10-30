@@ -15,7 +15,7 @@
  * Key 为空的行整行跳过，并在卡片上提示「N 把 Key 空着被跳过」。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
+import {
   DEFAULT_OVERSEAS_RATE,
   defaultMultiplierFor,
   BUILTIN_PROVIDER_ORDER,
@@ -300,7 +300,7 @@ export function recommendedGroups(): DraftGroup[] {
       baseUrl: 'https://xn--ai-xg4e312c.com',
       keys: [
         newKey(['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'], 'openai', '0.1', 'relay'),
-        newKey(['gemini-4-carbon'], 'openai', '0.25', 'relay'),
+        newKey(['gemini-4-carbon'], 'openai', '0.3', 'relay'),
         newKey(['claude-opus-5-5'], 'anthropic', '1.1', 'relay'),
       ],
     },
@@ -865,7 +865,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     >
       <div className="ai-rec-head">
         <p className="modal-sub">
-          一行是一个地址，同一个地址可以挂多把 Key（中转站常见：一把生图、一把 claude）。
+          同一个 url 可以配置多把 key ，同一把 key 可以配置多个模型。留空的配置保存时跳过。
         </p>
         <button type="button" className="ai-rec-recommend" onClick={applyRecommended}>
           推荐配置
@@ -873,7 +873,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       </div>
       <ul className="ai-rec-why">
         <li><b>deepseek</b>：性价比高、易用、快速的文本模型，适合日常使用</li>
-        <li><b>seedance</b>：当前业界领先的视频生成模型，复杂真人与自然画面刚需</li>
+        <li><b>seedance</b>：当前业界领先的视频生成模型，写实画面刚需</li>
         <li><b>gpt-image</b>：当前最好的生图模型，flare 生图，sunburst 改图</li>
         <li><b>gemini</b>：更好的智力，更强的写作</li>
         <li><b>opus</b>：更好的智力，提示词设计、代码做视频</li>
@@ -889,7 +889,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       {error && <p className="error small">{error}</p>}
 
       {seeded ? draft.map((group, groupIndex) => {
-        const lastGroup = draft.length <= 1;
+        const lastGroup = draft.length <= 1;
         const candidates = Array.from(
           new Set([
             ...presetTagsFor(providerLike(group)).map((tag) => tag.modelId),
@@ -953,7 +953,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
               />
               <RecMenu
                 ariaLabel={`厂商 ${groupIndex + 1}`}
-                buttonClassName="ai-rec-vendor"
+                buttonClassName="ai-rec-vendor"
                 value={group.vendor}
                 options={VENDOR_OPTIONS}
                 onChange={(value) => {
@@ -1216,7 +1216,8 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                 </div>
               );
             })}
-
+
+
           </div>
         );
       }) : (
@@ -1226,9 +1227,11 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       {filledKeys === 0 && pendingRemovals === 0 ? (
         <p className="ai-rec-hint">填一把 Key 就能保存；也可以点右上角「推荐配置」自动填好常用的三组。</p>
       ) : null}
+      {/*
       {filledKeys > 0 && skippedKeys > 0 && (
         <p className="ai-rec-warn">Key 空着的 {skippedKeys} 行保存时会跳过</p>
       )}
+      */}
       {toast ? (
         <div
           className={`ai-rec-toast is-${toast.kind}`}

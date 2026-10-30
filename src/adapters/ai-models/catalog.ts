@@ -58,23 +58,23 @@ export type ProviderProtocol = 'openai' | 'anthropic' | 'responses';
  *
  * - relay        中转站：multiplier = 分组倍率（基础价按 ¥1=$1 折算）
  * - domestic     国内模型按量：multiplier = 1
- * - subscription 官方订阅（包月）：multiplier = 0，单次不记账
  * - overseas     国外模型官方按量：multiplier = 汇率（默认 6.8）
+ * - subscription 官方订阅（包月）：multiplier = 0，单次不记账
  */
-export type BillingMode = 'relay' | 'domestic' | 'subscription' | 'overseas';
+export type BillingMode = 'relay' | 'domestic' | 'overseas' | 'subscription';
 
-export const BILLING_MODES: readonly BillingMode[] = ['relay', 'domestic', 'subscription', 'overseas'];
+export const BILLING_MODES: readonly BillingMode[] = ['relay', 'domestic', 'overseas', 'subscription'];
 
 /** 切到某种方式时用的默认 multiplier */
 export const BILLING_DEFAULT_MULTIPLIER: Record<BillingMode, number> = {
   relay: 1,
   domestic: 1,
-  subscription: 0,
   overseas: 6.8,
+  subscription: 0,
 };
 
 /** 海外官方按量的默认汇率（人民币 / 美元） */
-export const DEFAULT_OVERSEAS_RATE = 6.8;
+export const DEFAULT_OVERSEAS_RATE = 6.66;
 
 export const BILLING_MODE_LABELS: Record<BillingMode, string> = {
   relay: '中转站',
@@ -312,7 +312,7 @@ export const LOCAL_DEPLOY_NOTICE =
 export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   zhipu: {
     id: 'zhipu',
-    name: '智谱',
+    name: '智谱 / glm / cog',
     protocol: 'openai',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     defaultModelId: 'glm-5.3-flash',
@@ -332,7 +332,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   ark: {
     id: 'ark',
-    name: '火山方舟（豆包）',
+    name: '火山方舟 / doubao-seed',
     protocol: 'openai',
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     defaultModelId: 'doubao-seed-2-1-pro-260628',
@@ -343,7 +343,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   moonshot: {
     id: 'moonshot',
-    name: '月之暗面 / Kimi',
+    name: '月之暗面 / kimi',
     protocol: 'openai',
     baseUrl: 'https://api.moonshot.cn/v1',
     defaultModelId: 'kimi-k3.1-pro',
@@ -353,7 +353,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   dashscope: {
     id: 'dashscope',
-    name: '阿里百炼 / 千问',
+    name: '阿里百炼 / qwen / wan',
     protocol: 'openai',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     defaultModelId: 'qwen3.8-flash',
@@ -377,7 +377,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   openai: {
     id: 'openai',
-    name: 'OpenAI',
+    name: 'OpenAI / gpt',
     protocol: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     defaultModelId: 'gpt-6.1-sol',
@@ -388,7 +388,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   gemini: {
     id: 'gemini',
-    name: 'Google / Gemini',
+    name: 'Google / gemini',
     protocol: 'openai',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     defaultModelId: 'gemini-4-argon',
@@ -399,7 +399,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   anthropic: {
     id: 'anthropic',
-    name: 'Anthropic',
+    name: 'Anthropic / claude',
     protocol: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
     defaultModelId: 'claude-opus-5-5',
@@ -410,7 +410,7 @@ export const VENDOR_META: Record<BuiltinProviderId, VendorMeta> = {
   },
   linghui: {
     id: 'linghui',
-    name: '灵绘（中转）',
+    name: '灵绘 · 中转站',
     protocol: 'openai',
     baseUrl: 'https://xn--ai-xg4e312c.com',
     defaultModelId: 'claude-opus-5-5',
@@ -663,7 +663,7 @@ export const PRESET_TAGS: Record<PresetGroup, readonly PresetTag[]> = {
       priceStatus: '已核实',
     },
     {
-      label: 'deepseek-v4-pro（文本，长上下文）',
+      label: 'deepseek-v4-pro（文本）',
       modelId: 'deepseek-v4-pro',
       caps: ['text'],
       note: '不支持图像',
@@ -681,18 +681,18 @@ export const PRESET_TAGS: Record<PresetGroup, readonly PresetTag[]> = {
       priceStatus: '已核实',
     },
     {
-      label: 'doubao-seed-2-1-pro-260628（文本+视觉）',
-      modelId: 'doubao-seed-2-1-pro-260628',
-      caps: ['text', 'vision'],
-      price: '输入 6.00 / 输出 30.00（元/百万 token）',
-      priceStatus: '已核实',
-    },
-    {
       label: 'doubao-seedream-5-0-pro-260628（生图，推荐）',
       modelId: 'doubao-seedream-5-0-pro-260628',
       caps: ['image'],
       note: '推荐',
       price: '0.30 元/张（>261 万像素 0.60 元/张）',
+      priceStatus: '已核实',
+    },
+    {
+      label: 'doubao-seed-2-1-pro-260628（文本+视觉）',
+      modelId: 'doubao-seed-2-1-pro-260628',
+      caps: ['text', 'vision'],
+      price: '输入 6.00 / 输出 30.00（元/百万 token）',
       priceStatus: '已核实',
     },
   ],

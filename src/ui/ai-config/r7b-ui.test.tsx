@@ -256,7 +256,7 @@ describe('B. 推荐配置弹窗', () => {
     expect(billings).toEqual(['domestic', 'domestic', 'relay', 'relay', 'relay']);
     // 数字框一直都在（1 / 0 / 汇率都要看得见），四种方式都能手改
     const multipliers = qa<HTMLInputElement>('.ai-rec-mult');
-    expect(multipliers.map((input) => input.value)).toEqual(['1', '1', '0.1', '0.25', '1.1']);
+    expect(multipliers.map((input) => input.value)).toEqual(['1', '1', '0.1', '0.3', '1.1']);
     expect(multipliers.every((input) => input.readOnly === false)).toBe(true);
   });
 

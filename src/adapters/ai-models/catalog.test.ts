@@ -152,17 +152,17 @@ describe('三层模型：厂商 → 连接 → 模型', () => {
     ]);
     // 页面上看到的名字与顺序
     expect(BUILTIN_PROVIDER_ORDER.map((id) => VENDOR_META[id].name)).toEqual([
-      '智谱',
+      '智谱 / glm / cog',
       'DeepSeek',
-      '火山方舟（豆包）',
-      '月之暗面 / Kimi',
-      '阿里百炼 / 千问',
+      '火山方舟 / doubao-seed',
+      '月之暗面 / kimi',
+      '阿里百炼 / qwen / wan',
       'MiniMax',
-      'Anthropic',
-      'OpenAI',
-      'Google / Gemini',
+      'Anthropic / claude',
+      'OpenAI / gpt',
+      'Google / gemini',
       '本地部署',
-      '灵绘（中转）',
+      '灵绘 · 中转站',
     ]);
     // 自定义厂商不插队，永远排在最后
     expect(PROVIDER_SLOTS).toEqual([...BUILTIN_PROVIDER_ORDER, 'custom']);
@@ -344,8 +344,8 @@ describe('预设标签（§2 表格，原样）', () => {
      */
     expect(PRESET_TAGS.ark.map((tag) => tag.modelId)).toEqual([
       'doubao-seedance-2-5-260628',
-      'doubao-seed-2-1-pro-260628',
       'doubao-seedream-5-0-pro-260628',
+      'doubao-seed-2-1-pro-260628',
     ]);
     expect(PRESET_TAGS.moonshot.map((tag) => tag.modelId)).toEqual([
       'kimi-k3.1-pro',
