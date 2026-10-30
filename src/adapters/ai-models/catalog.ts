@@ -194,7 +194,7 @@ export interface ModelEntry {
    * - `default` —— 名录里没有，按「文本 1M」猜的。
    * 界面靠它区分「应用知道」和「用户自己说的」，别再让人凭感觉勾。
    */
-  contextSource?: 'catalog' | 'manual' | 'default';
+  contextSource?: 'catalog' | 'manual' | 'default' | 'none';
   caps: ModelCap[];
   /** 如「免费测试」「本地部署推荐」 */
   note?: string;
@@ -1147,8 +1147,8 @@ function normalizeModelEntry(value: unknown): ModelEntry | null {
       : undefined;
   const sourceRaw = asString(row.contextSource);
   const contextSource =
-    sourceRaw === 'catalog' || sourceRaw === 'manual' || sourceRaw === 'default'
-      ? (sourceRaw as 'catalog' | 'manual' | 'default')
+    sourceRaw === 'catalog' || sourceRaw === 'manual' || sourceRaw === 'default' || sourceRaw === 'none'
+      ? (sourceRaw as 'catalog' | 'manual' | 'default' | 'none')
       : undefined;
   return {
     id,
@@ -1801,6 +1801,8 @@ export interface VideoModelRef {
   modelId: string;
   /** 用户声明的上下文窗口（token）；没声明就是 undefined（界面按 128k 处理） */
   contextLength?: number;
+  /** 'none' = 明确不声明（生图/视频模型默认），生成页就不做超长提醒 */
+  contextSource?: 'catalog' | 'manual' | 'default' | 'none';
   displayName: string;
   usable: boolean;
 }
@@ -1831,6 +1833,7 @@ export function listModelsByCap(catalog: AICatalog, cap: ModelCap): VideoModelRe
           ...(typeof model.contextLength === 'number' && model.contextLength > 0
             ? { contextLength: model.contextLength }
             : {}),
+          ...(model.contextSource ? { contextSource: model.contextSource } : {}),
           displayName: model.displayName || modelId,
           usable: true,
         });

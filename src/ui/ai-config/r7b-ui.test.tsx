@@ -905,3 +905,38 @@ describe('E. 组头注册链接 + 模型行的「1M」声明', () => {
     expect((await pick())?.contextSource).toBe('manual');
   });
 });
+
+describe('F. 窗口控件只出现在文本模型上；可以选「不声明」', () => {
+  it('生图 / 视频模型不显示上下文窗口控件', async () => {
+    await mountCard();
+    await openRecommend();
+    // 三组里文本模型 2 个（deepseek-flash / gemini-4-argon / opus 其实是 3 个），
+    // 生图 2 个、视频 1 个不显示
+    const chips = qa<HTMLElement>('.ai-rec-ctx');
+    expect(chips).toHaveLength(3);
+    const labels = chips.map((chip) => (chip.textContent ?? '').replace('▾', '').trim());
+    expect(labels).toEqual(['1M', '1M', '1M']);
+  });
+
+  it('选「不声明」：保存时 contextLength 为空、来源记 none，生成页不再提醒', async () => {
+    await mountCard();
+    await openRecommend();
+    await click(byLabel('上下文窗口 1-1') as HTMLButtonElement);
+    const opt = [...document.querySelectorAll('[role="option"]')].find((node) =>
+      (node.textContent ?? '').includes('不声明'),
+    ) as HTMLButtonElement | undefined;
+    expect(opt).toBeDefined();
+    await click(opt);
+
+    await setValue(byLabel<HTMLInputElement>('API Key 1-1') as HTMLInputElement, 'sk-deepseek');
+    await click(q('[data-testid="ai-recommend-save"]'));
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    const model = saved.providers
+      .find((provider) => provider.id === 'deepseek')
+      ?.connections[0]?.models[0];
+    expect(model?.contextLength).toBeUndefined();
+    expect(model?.contextSource).toBe('none');
+  });
+});

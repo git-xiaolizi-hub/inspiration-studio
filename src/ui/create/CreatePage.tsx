@@ -494,9 +494,12 @@ export function CreatePage({
     () =>
       contextBudget(
         threadTokens,
-        contextWindow ?? currentTextModel?.contextLength ?? DEFAULT_CONTEXT_WINDOW,
+        contextWindow ??
+          (currentTextModel?.contextSource === 'none'
+            ? Number.POSITIVE_INFINITY
+            : currentTextModel?.contextLength ?? DEFAULT_CONTEXT_WINDOW),
       ),
-    [threadTokens, contextWindow, currentTextModel?.contextLength],
+    [threadTokens, contextWindow, currentTextModel?.contextLength, currentTextModel?.contextSource],
   );
 
   /* ---------------------------------------------------------------- */

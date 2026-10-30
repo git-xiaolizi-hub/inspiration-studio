@@ -70,15 +70,17 @@ const ONE_MILLION = 1_048_576;
  */
 /** 按钮上的文字：1M / 512k / 200k / 128k */
 function formatContext(size: number | undefined): string {
+  if (size === 0) return '—';
   const value = typeof size === 'number' && size > 0 ? size : DEFAULT_CONTEXT_WINDOW;
+  if (value >= 10_000_000) return '10M';
   if (value >= 1_000_000) return '1M';
   return `${Math.round(value / 1000)}k`;
 }
 
 interface ResolvedContext {
   length: number;
-  /** catalog = 名录真实值；manual = 用户改的；guess = 名录没收录，按文本 1M 猜 */
-  source: 'catalog' | 'manual' | 'guess';
+  /** catalog = 名录真实值；manual = 用户改的；guess = 按文本 1M 猜；none = 不声明 */
+  source: 'catalog' | 'manual' | 'guess' | 'none';
 }
 
 /**
@@ -86,6 +88,7 @@ interface ResolvedContext {
  * 用户手动设过 → manual；名录有 → catalog；都没有 → 文本模型猜 1M，其余按 128k。
  */
 function resolveContext(model: DraftModel): ResolvedContext {
+  if (model.contextSource === 'none') return { length: 0, source: 'none' };
   if (typeof model.contextLength === 'number' && model.contextLength > 0) {
     return { length: model.contextLength, source: 'manual' };
   }
@@ -93,7 +96,15 @@ function resolveContext(model: DraftModel): ResolvedContext {
   if (known) return { length: known, source: 'catalog' };
   const tag = presetTagById(model.modelId);
   if (tag?.caps.includes('text')) return { length: ONE_MILLION, source: 'guess' };
-  return { length: DEFAULT_CONTEXT_WINDOW, source: 'guess' };
+  // 生图 / 视频 / 音频不涉及上下文，不该硬塞一个 128k
+  return { length: 0, source: 'none' };
+}
+
+/** 这条模型需不需要「上下文窗口」这个设置：文本模型才需要 */
+function needsContextControl(model: DraftModel): boolean {
+  const tag = presetTagById(model.modelId);
+  if (!tag) return true; // 手填的模型不知道能力，留着让用户自己定
+  return tag.caps.includes('text');
 }
 
 /** 窗口下拉的选项：自动 + 常见档位（够用，不做自由输入） */
@@ -112,10 +123,18 @@ function contextOptions(resolved: ResolvedContext): RecMenuOption[] {
     { value: '262144', label: '256k', short: '256k', hint: '例如 doubao-seed-2-1-pro' },
     { value: '524288', label: '512k', short: '512k', hint: '例如 MiniMax-M3' },
     { value: '1048576', label: '1M', short: '1M', hint: '长文模型' },
+    { value: '10485760', label: '10M', short: '10M', hint: 'qwen-long / llama4-scout 这类超长模型' },
+    {
+      value: 'none',
+      label: '不声明',
+      short: '—',
+      hint: '不在配置里写窗口，应用也就不做「会话太长」的提醒',
+    },
   ];
 }
 
 function contextTitle(resolved: ResolvedContext): string {
+  if (resolved.source === 'none') return '不声明上下文：应用不按窗口做提醒（生图/视频模型默认这样）';
   const value = formatContext(resolved.length);
   if (resolved.source === 'catalog') return `上下文 ${value} · 来自名录（应用自己填的，不用你判断）`;
   if (resolved.source === 'manual') return `上下文 ${value} · 你手动设的`;
@@ -144,8 +163,10 @@ type VendorChoice = BuiltinProviderId | typeof CUSTOM;
 interface DraftModel {
   id: string;
   modelId: string;
-  /** 只有开了「1M」才有值；没开就按应用的 128k 默认 */
+  /** 手动指定的窗口；没值 = 自动（或 none = 明确不声明） */
   contextLength?: number;
+  /** 'none' = 用户明确选了「不声明上下文」 */
+  contextSource?: 'none';
 }
 
 interface DraftKey {
@@ -496,17 +517,28 @@ function providerLike(group: DraftGroup, providerId?: string) {
 }
 
 /** 某个模型 id 在厂商预设里的定义（名字 / 能力 / 价格都照抄名录，不编） */
-function entryFor(group: DraftGroup, modelId: string, contextLength?: number): ModelEntry {
+function entryFor(
+  group: DraftGroup,
+  modelId: string,
+  contextLength?: number,
+  contextSource?: 'none',
+): ModelEntry {
   const id = modelId.trim();
   const tag = presetTagsFor(providerLike(group)).find((item) => item.modelId === id);
+  // 明确「不声明」，或模型本来就不吃上下文（生图/视频）→ 不写窗口
+  const skipContext = contextSource === 'none' || (!contextLength && tag && !tag.caps.includes('text'));
   if (tag) {
     return {
       id: makeId('model'),
       displayName: tag.label,
       modelId: id,
-      // 窗口与来源一起落库：界面才能显示「名录 / 手动 / 猜测」
-      contextLength: resolveLength(id, tag, contextLength),
-      contextSource: contextLength ? 'manual' : knownContextFor(id) ? 'catalog' : 'default',
+      // 窗口与来源一起落库：界面才能显示「名录 / 手动 / 猜测 / 不声明」
+      ...(skipContext
+        ? { contextLength: undefined, contextSource: 'none' as const }
+        : {
+            contextLength: resolveLength(id, tag, contextLength),
+            contextSource: contextLength ? ('manual' as const) : knownContextFor(id) ? ('catalog' as const) : ('default' as const),
+          }),
       caps: [...tag.caps],
       note: tag.note,
       price: tag.price,
@@ -519,8 +551,12 @@ function entryFor(group: DraftGroup, modelId: string, contextLength?: number): M
     id: makeId('model'),
     displayName: id,
     modelId: id,
-    contextLength: resolveLength(id, undefined, contextLength),
-    contextSource: contextLength ? 'manual' : knownContextFor(id) ? 'catalog' : 'default',
+    ...(skipContext
+      ? { contextLength: undefined, contextSource: 'none' as const }
+      : {
+          contextLength: resolveLength(id, undefined, contextLength),
+          contextSource: contextLength ? ('manual' as const) : knownContextFor(id) ? ('catalog' as const) : ('default' as const),
+        }),
     caps: ['text'],
     note: '手填的模型名：能力请到 AI 配置页勾选',
     price: null,
@@ -762,10 +798,13 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       ...key,
       models: key.models.map((model) =>
         model.id === modelRowId
-          ? {
-              ...model,
-              contextLength: value === 'auto' ? undefined : Number(value) || undefined,
-            }
+          ? value === 'none'
+            ? { ...model, contextLength: undefined, contextSource: 'none' as const }
+            : {
+                ...model,
+                contextLength: value === 'auto' ? undefined : Number(value) || undefined,
+                contextSource: undefined,
+              }
           : model,
       ),
     }));
@@ -866,7 +905,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
           const connection = owner?.connections.find((item) => item.id === key.connectionId);
           if (!owner || !connection) continue;
           const wantedHere = key.models
-            .map((model) => entryFor(group, model.modelId, model.contextLength))
+            .map((model) => entryFor(group, model.modelId, model.contextLength, model.contextSource))
             .filter(isRealModel);
           const merged = connection.models.map(
             (model) => wantedHere.find((item) => item.modelId === model.modelId) ?? model,
@@ -911,7 +950,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
             multiplier: multiplierOfText(filled[0].multiplier),
             billingMode: filled[0].billingMode,
             modeMultipliers: collectModeMultipliers(filled[0]),
-            models: filled[0].models.map((model) => entryFor(group, model.modelId, model.contextLength)).filter(isRealModel),
+            models: filled[0].models.map((model) => entryFor(group, model.modelId, model.contextLength, model.contextSource)).filter(isRealModel),
           });
           kept.add(first.id);
           pending = filled.slice(1);
@@ -1329,14 +1368,22 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                           1M：模型本身支持，但大多数 OpenAI 兼容接口默认只按 128k 算。
                           勾上 = 在配置里声明这条模型的上下文窗口是 1M，生成页的长文会话才不会被过早判定「太长」。
                         */}
-                        <RecMenu
-                          ariaLabel={`上下文窗口 ${groupIndex + 1}-${keyIndex + 1}`}
-                          buttonClassName="ai-rec-ctx"
-                          value={model.contextLength ? String(model.contextLength) : 'auto'}
-                          options={contextOptions(resolved)}
-                          title={contextTitle(resolved)}
-                          onChange={(value) => setModelContext(group.id, key.id, model.id, value)}
-                        />
+                        {needsContextControl(model) ? (
+                          <RecMenu
+                            ariaLabel={`上下文窗口 ${groupIndex + 1}-${keyIndex + 1}`}
+                            buttonClassName="ai-rec-ctx"
+                            value={
+                              model.contextSource === 'none'
+                                ? 'none'
+                                : model.contextLength
+                                  ? String(model.contextLength)
+                                  : 'auto'
+                            }
+                            options={contextOptions(resolved)}
+                            title={contextTitle(resolved)}
+                            onChange={(value) => setModelContext(group.id, key.id, model.id, value)}
+                          />
+                        ) : null}
                         {/* 逐个模型测：一个 Key 下有几个模型时，只测第一个测不出后面写错的那个 */}
                         <span
                           className={`ai-rec-model-flag is-${probe?.status ?? 'idle'}`}
@@ -1450,7 +1497,7 @@ function appendKey(
   group: DraftGroup,
   key: DraftKey,
 ): { catalog: AICatalog; connectionId: string } {
-  const wanted = key.models.map((model) => entryFor(group, model.modelId, model.contextLength)).filter(isRealModel);
+  const wanted = key.models.map((model) => entryFor(group, model.modelId, model.contextLength, model.contextSource)).filter(isRealModel);
   const provider = catalog.providers.find((item) => item.id === providerId);
   const sameUrl = normalizeUrl(group.baseUrl);
   const apiKey = key.apiKey.trim();
