@@ -68,11 +68,6 @@ const ONE_MILLION = 1_048_576;
  * - 生图 / 视频 / 音频模型不涉及长上下文，不勾；
  * - 名录里本来就写了窗口的（如 kimi）用它自己那个。
  */
-/** 勾选判据：声明的窗口大于应用默认的 128k */
-function isLongContext(model: DraftModel): boolean {
-  return typeof model.contextLength === 'number' && model.contextLength > DEFAULT_CONTEXT_WINDOW;
-}
-
 /** 按钮上的文字：1M / 512k / 200k / 128k */
 function formatContext(size: number | undefined): string {
   const value = typeof size === 'number' && size > 0 ? size : DEFAULT_CONTEXT_WINDOW;
@@ -80,16 +75,68 @@ function formatContext(size: number | undefined): string {
   return `${Math.round(value / 1000)}k`;
 }
 
-function defaultContextFor(modelId: string): number | undefined {
-  // ① 名录里有真实值就用真实值（glm-4.7-flash 200k / MiniMax-M3 512k 这类，
-  //    一律按 1M 猜会乐观 5 倍）
+interface ResolvedContext {
+  length: number;
+  /** catalog = 名录真实值；manual = 用户改的；guess = 名录没收录，按文本 1M 猜 */
+  source: 'catalog' | 'manual' | 'guess';
+}
+
+/**
+ * 这条模型的窗口从哪来（界面与保存都用它，避免「勾不勾凭感觉」）：
+ * 用户手动设过 → manual；名录有 → catalog；都没有 → 文本模型猜 1M，其余按 128k。
+ */
+function resolveContext(model: DraftModel): ResolvedContext {
+  if (typeof model.contextLength === 'number' && model.contextLength > 0) {
+    return { length: model.contextLength, source: 'manual' };
+  }
+  const known = knownContextFor(model.modelId);
+  if (known) return { length: known, source: 'catalog' };
+  const tag = presetTagById(model.modelId);
+  if (tag?.caps.includes('text')) return { length: ONE_MILLION, source: 'guess' };
+  return { length: DEFAULT_CONTEXT_WINDOW, source: 'guess' };
+}
+
+/** 窗口下拉的选项：自动 + 常见档位（够用，不做自由输入） */
+function contextOptions(resolved: ResolvedContext): RecMenuOption[] {
+  const current = formatContext(resolved.length);
+  const autoHint =
+    resolved.source === 'catalog'
+      ? '按名录（models.dev / LiteLLM）里的真实窗口'
+      : resolved.source === 'manual'
+        ? '现在是你手动设的值；选自动就回到按名录算'
+        : '名录没收录这条模型，暂按文本 1M 估';
+  return [
+    { value: 'auto', label: `自动（${current}）`, short: current, hint: autoHint },
+    { value: '131072', label: '128k', short: '128k', hint: '模型只有 128k 时选它' },
+    { value: '200000', label: '200k', short: '200k', hint: '例如 glm-4.7-flash' },
+    { value: '262144', label: '256k', short: '256k', hint: '例如 doubao-seed-2-1-pro' },
+    { value: '524288', label: '512k', short: '512k', hint: '例如 MiniMax-M3' },
+    { value: '1048576', label: '1M', short: '1M', hint: '长文模型' },
+  ];
+}
+
+function contextTitle(resolved: ResolvedContext): string {
+  const value = formatContext(resolved.length);
+  if (resolved.source === 'catalog') return `上下文 ${value} · 来自名录（应用自己填的，不用你判断）`;
+  if (resolved.source === 'manual') return `上下文 ${value} · 你手动设的`;
+  return `上下文 ${value} · 名录没收录，按文本模型估的`;
+}
+
+/**
+ * 落库用的窗口：手动值 > 名录真实值 > 模型自带的 > 文本模型按 1M 猜 > 128k。
+ * 这是「自动」分支的唯一实现，界面与保存都走它。
+ */
+function resolveLength(
+  modelId: string,
+  tag: { caps: readonly string[]; contextLength?: number } | undefined,
+  manual?: number,
+): number {
+  if (typeof manual === 'number' && manual > 0) return manual;
   const known = knownContextFor(modelId);
   if (known) return known;
-  // ② 名录没有：文本模型先按 1M 声明（用户可取消 = 明确 128k）
-  const tag = presetTagById(modelId);
-  if (!tag) return undefined;
-  if (tag.caps.includes('text')) return ONE_MILLION;
-  return tag.contextLength;
+  if (tag?.contextLength) return tag.contextLength;
+  if (tag?.caps.includes('text')) return ONE_MILLION;
+  return DEFAULT_CONTEXT_WINDOW;
 }
 
 type VendorChoice = BuiltinProviderId | typeof CUSTOM;
@@ -210,8 +257,8 @@ function collectModeMultipliers(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 function newModel(modelId: string, contextLength?: number): DraftModel {
-  const ctx = contextLength ?? defaultContextFor(modelId);
-  return { id: makeId('dm'), modelId, ...(ctx ? { contextLength: ctx } : {}) };
+  // 不预设 contextLength：留空 = 自动（按名录现算），预设了就变成"用户手动改的"
+  return { id: makeId('dm'), modelId, ...(contextLength ? { contextLength } : {}) };
 }
 
 function newKey(
@@ -253,7 +300,10 @@ function keyFromConnection(connection: Connection): DraftKey {
     models: (connection.models.length > 0 ? connection.models : [{ modelId: '' }]).map((model) => ({
       id: makeId('dm'),
       modelId: model.modelId,
-      ...('contextLength' in model && typeof model.contextLength === 'number'
+      // 只把「用户手动改过的」带回来；名录值每次按最新名录现算，不冻结在草稿里
+      ...('contextLength' in model &&
+      typeof model.contextLength === 'number' &&
+      (model.contextSource ?? 'manual') === 'manual'
         ? { contextLength: model.contextLength }
         : {}),
     })),
@@ -454,8 +504,9 @@ function entryFor(group: DraftGroup, modelId: string, contextLength?: number): M
       id: makeId('model'),
       displayName: tag.label,
       modelId: id,
-      // 用户在模型行上勾了「1M」就以勾选为准（模型支持但接口不声明时，默认只按 128k 算）
-      contextLength: contextLength ?? tag.contextLength,
+      // 窗口与来源一起落库：界面才能显示「名录 / 手动 / 猜测」
+      contextLength: resolveLength(id, tag, contextLength),
+      contextSource: contextLength ? 'manual' : knownContextFor(id) ? 'catalog' : 'default',
       caps: [...tag.caps],
       note: tag.note,
       price: tag.price,
@@ -468,7 +519,8 @@ function entryFor(group: DraftGroup, modelId: string, contextLength?: number): M
     id: makeId('model'),
     displayName: id,
     modelId: id,
-    contextLength,
+    contextLength: resolveLength(id, undefined, contextLength),
+    contextSource: contextLength ? 'manual' : knownContextFor(id) ? 'catalog' : 'default',
     caps: ['text'],
     note: '手填的模型名：能力请到 AI 配置页勾选',
     price: null,
@@ -704,16 +756,16 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     );
   }
 
-  /**
-   * 长上下文开关：勾上 = 用这条模型的真实窗口（名录有就照抄，没有就按 1M 声明），
-   * 取消 = 明确写 128k（不是"未声明"，这样数据上能区分"我确认过"和"我还没管"）。
-   */
-  function toggleModelContext(groupId: string, keyId: string, modelRowId: string): void {
+  /** 改窗口：'auto' = 回到自动（按名录现算），否则记成手动值 */
+  function setModelContext(groupId: string, keyId: string, modelRowId: string, value: string): void {
     updateKey(groupId, keyId, (key) => ({
       ...key,
       models: key.models.map((model) =>
         model.id === modelRowId
-          ? { ...model, contextLength: isLongContext(model) ? DEFAULT_CONTEXT_WINDOW : defaultContextFor(model.modelId) ?? ONE_MILLION }
+          ? {
+              ...model,
+              contextLength: value === 'auto' ? undefined : Number(value) || undefined,
+            }
           : model,
       ),
     }));
@@ -724,7 +776,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
       ...key,
       models: key.models.map((model) =>
         model.id === modelRowId
-          ? { ...model, modelId, contextLength: defaultContextFor(modelId) }
+          ? { ...model, modelId, contextLength: undefined }
           : model,
       ),
     }));
@@ -1240,6 +1292,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                     const lastModel = key.models.length <= 1;
                     const known = candidates.includes(model.modelId);
                     const probe = modelProbes[model.id];
+                    const resolved = resolveContext(model);
                     return (
                       <div className="ai-rec-line ai-rec-model-line" key={model.id}>
                         {group.vendor === CUSTOM ? (
@@ -1276,21 +1329,14 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                           1M：模型本身支持，但大多数 OpenAI 兼容接口默认只按 128k 算。
                           勾上 = 在配置里声明这条模型的上下文窗口是 1M，生成页的长文会话才不会被过早判定「太长」。
                         */}
-                        <button
-                          type="button"
-                          className={`ai-rec-ctx${isLongContext(model) ? ' is-on' : ''}`}
-                          aria-pressed={isLongContext(model)}
-                          aria-label={`1M 上下文 ${groupIndex + 1}-${keyIndex + 1}`}
-                          title={
-                            isLongContext(model)
-                              ? `按 ${formatContext(model.contextLength)} 算会话预算（名录里的真实窗口）；点一下改成 128k`
-                              : '这条模型支持更长上下文时勾上；不勾按 128k 估算'
-                          }
-                          onClick={() => toggleModelContext(group.id, key.id, model.id)}
-                        >
-                          <i aria-hidden="true">{isLongContext(model) ? '✓' : ''}</i>
-                          {formatContext(model.contextLength)}
-                        </button>
+                        <RecMenu
+                          ariaLabel={`上下文窗口 ${groupIndex + 1}-${keyIndex + 1}`}
+                          buttonClassName="ai-rec-ctx"
+                          value={model.contextLength ? String(model.contextLength) : 'auto'}
+                          options={contextOptions(resolved)}
+                          title={contextTitle(resolved)}
+                          onChange={(value) => setModelContext(group.id, key.id, model.id, value)}
+                        />
                         {/* 逐个模型测：一个 Key 下有几个模型时，只测第一个测不出后面写错的那个 */}
                         <span
                           className={`ai-rec-model-flag is-${probe?.status ?? 'idle'}`}

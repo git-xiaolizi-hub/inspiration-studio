@@ -870,37 +870,38 @@ describe('E. 组头注册链接 + 模型行的「1M」声明', () => {
     ]);
   });
 
-  it('文本模型默认勾 1M；取消勾 = 明确 128k，两个值都能落库并回填', async () => {
+  it('窗口默认按名录自动填（不让用户猜）；手动改成 128k 记成「手动」', async () => {
     await mountCard();
     await openRecommend();
 
-    // deepseek-flash 是文本模型 → 一进来就是勾着的
-    expect(byLabel('1M 上下文 1-1')?.getAttribute('aria-pressed')).toBe('true');
+    // deepseek-flash 名录里是 1M → 按钮直接显示 1M，用户什么都不用做
+    const chip = byLabel('上下文窗口 1-1') as HTMLButtonElement;
+    expect((chip.textContent ?? '').replace('▾', '').trim()).toBe('1M');
 
     await setValue(byLabel<HTMLInputElement>('API Key 1-1') as HTMLInputElement, 'sk-deepseek');
     await click(q('[data-testid="ai-recommend-save"]'));
     await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
 
-    const saved = await loadCatalog();
-    const first = saved.providers.find((provider) => provider.id === 'deepseek')?.connections[0]?.models[0];
-    expect(first?.modelId).toBe('deepseek-flash');
-    expect(first?.contextLength).toBe(1000000); // 名录里 deepseek-flash 的真实窗口
+    const pick = async (model?: string) =>
+      (await loadCatalog()).providers
+        .find((provider) => provider.id === 'deepseek')
+        ?.connections[0]?.models.find((item) => item.modelId === (model ?? 'deepseek-flash'));
 
-    // 再打开：仍是勾着
+    expect((await pick())?.contextLength).toBe(1000000);
+    expect((await pick())?.contextSource).toBe('catalog');
+
+    // 再打开 → 手动选 128k
     await openRecommend(false);
-    const again = byLabel<HTMLButtonElement>('1M 上下文 1-1') as HTMLButtonElement;
-    expect(again.getAttribute('aria-pressed')).toBe('true');
-
-    // 取消勾 → 保存成明确的 128k（不是"未声明"）
-    await click(again);
-    expect(byLabel('1M 上下文 1-1')?.getAttribute('aria-pressed')).toBe('false');
+    await click(byLabel('上下文窗口 1-1') as HTMLButtonElement);
+    const opt = [...document.querySelectorAll('[role="option"]')].find((node) =>
+      (node.textContent ?? '').includes('128k'),
+    ) as HTMLButtonElement | undefined;
+    expect(opt).toBeDefined();
+    await click(opt);
     await click(q('[data-testid="ai-recommend-save"]'));
     await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
 
-    const after = await loadCatalog();
-    expect(
-      after.providers.find((provider) => provider.id === 'deepseek')?.connections[0]?.models[0]
-        ?.contextLength,
-    ).toBe(128000);
+    expect((await pick())?.contextLength).toBe(131072);
+    expect((await pick())?.contextSource).toBe('manual');
   });
 });

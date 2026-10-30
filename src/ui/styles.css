@@ -4527,44 +4527,22 @@ input[type='date'] {
 
 .ai-rec-signup:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
-/* 模型行上的「1M」勾选：勾上是实心，没勾是空心 */
+/* 模型行上的上下文窗口：一个小下拉（自动 / 128k / 200k / 256k / 512k / 1M） */
 .ai-rec-ctx {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  width: auto !important;
+  height: 24px;
   padding: 2px 7px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: transparent;
   color: var(--fg-3);
   font-size: 11px;
-  line-height: 1.4;
-  cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
 
-.ai-rec-ctx i {
-  width: 11px;
-  height: 11px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  font-size: 9px;
-  font-style: normal;
-}
+.ai-rec-ctx:hover { border-color: var(--border-strong); color: var(--fg-2); }
 
-.ai-rec-ctx.is-on {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.ai-rec-ctx.is-on i {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
+.ai-rec-ctx .ai-rec-caret { font-size: 9px; opacity: 0.6; }
 .ai-rec-tag {
   padding: 1px 6px;
   border: 1px solid var(--border);

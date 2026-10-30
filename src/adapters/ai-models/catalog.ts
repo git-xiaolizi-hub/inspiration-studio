@@ -187,6 +187,14 @@ export interface ModelEntry {
   /** 实际请求模型 */
   modelId: string;
   contextLength?: number;
+  /**
+   * 这个窗口是谁定的：
+   * - `catalog` —— 名录里的真实值（models.dev / LiteLLM 同步来的），应用自己填的；
+   * - `manual`  —— 用户手动改过；
+   * - `default` —— 名录里没有，按「文本 1M」猜的。
+   * 界面靠它区分「应用知道」和「用户自己说的」，别再让人凭感觉勾。
+   */
+  contextSource?: 'catalog' | 'manual' | 'default';
   caps: ModelCap[];
   /** 如「免费测试」「本地部署推荐」 */
   note?: string;
@@ -1137,11 +1145,17 @@ function normalizeModelEntry(value: unknown): ModelEntry | null {
     typeof contextRaw === 'number' && Number.isFinite(contextRaw) && contextRaw > 0
       ? Math.trunc(contextRaw)
       : undefined;
+  const sourceRaw = asString(row.contextSource);
+  const contextSource =
+    sourceRaw === 'catalog' || sourceRaw === 'manual' || sourceRaw === 'default'
+      ? (sourceRaw as 'catalog' | 'manual' | 'default')
+      : undefined;
   return {
     id,
     displayName: asString(row.displayName).trim() || modelId || '未命名模型',
     modelId,
     contextLength,
+    contextSource,
     caps: asCaps(row.caps),
     note: asString(row.note).trim() || undefined,
     price: asPrice(row.price),
