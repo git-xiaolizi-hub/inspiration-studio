@@ -81,9 +81,6 @@ const STT_PRESETS: { id: string; name: string; baseUrl: string; model: string; f
   },
 ];
 
-/** 本地模型体积（MB）——两个提醒弹窗和副标题都用它，避免三处写死 78 */
-const LOCAL_MODEL_MB = 78;
-
 function cardDesc(
   candidate: VoiceMode,
   localModel: LocalModelInfo | null,
@@ -120,8 +117,6 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** 待确认的切换（弹窗开着时非 null） */
-  const [pendingMode, setPendingMode] = useState<VoiceMode | null>(null);
   /** 云端配置弹窗 */
   const [cloudOpen, setCloudOpen] = useState(false);
   /** 本地模型管理弹窗 */
@@ -149,19 +144,15 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
   const cloudErrors = useMemo(() => validateCloudSttForm(cloudConfig), [baseUrl, apiKey, model]);
   const cloudConfigured = Object.keys(cloudErrors).length === 0;
 
-  /** 选一个模式：只有「本地 → 仅记录」需要提一句（模型文件还在，只是不再用） */
+  /**
+   * 选一个模式。
+   *
+   * 早先「本地 → 仅记录」会弹一次「模型占 78MB，要切吗」——现在模型存在浏览器缓存里、
+   * 在「配置…」里随时能删，这个弹窗只是每次拦一下，委托人明确要求去掉。
+   */
   function pickMode(next: VoiceMode): void {
     if (next === mode) return;
-    if (next === 'record-only' && mode === 'local-whisper') {
-      setPendingMode('record-only');
-      return;
-    }
     setMode(next);
-  }
-
-  function confirmPendingMode(): void {
-    if (pendingMode) setMode(pendingMode);
-    setPendingMode(null);
   }
 
   async function handleSelfTest() {
@@ -277,30 +268,6 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
         {notice && <span className="success small">{notice}</span>}
         {error && <span className="error small">{error}</span>}
       </div>
-
-      {/* ---- 提醒 1：本地模型 → 仅作记录（78MB 去留） ---- */}
-      <Dialog
-        open={pendingMode === 'record-only'}
-        title="切成「仅作记录」？"
-        label="本地模型占用提醒"
-        onDismiss={() => setPendingMode(null)}
-        actions={[
-          { label: '保留', onClick: () => setPendingMode(null), testId: 'voice-keep-local' },
-          {
-            label: '仍要切换',
-            kind: 'primary',
-            onClick: confirmPendingMode,
-            testId: 'voice-confirm-record-only',
-          },
-        ]}
-      >
-        <p className="modal-sub">
-          {`切成「仅作记录」后不再转写，模型文件还留在这台设备的浏览器里（约 ${LOCAL_MODEL_MB}MB）。`}
-        </p>
-        <p className="modal-sub">
-          随时可以切回来，不用重新下载；想彻底腾出空间，去「本地模型 → 配置…」里点删除。
-        </p>
-      </Dialog>
 
       {/* ---- 本地模型管理：下载 / 切换 / 删除 ---- */}
       <LocalModelDialog
