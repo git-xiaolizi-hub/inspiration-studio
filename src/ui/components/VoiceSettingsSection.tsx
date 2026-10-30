@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CloudSttConfig, SelfTestState, VoiceMode, VoiceSettings } from '../../core/settings';
 import { defaultVoiceSettings, runCloudSttSelfTest, saveVoiceSettings, validateCloudSttForm } from '../../core/settings';
-import {
-  detectLocalModel,
-  resetLocalModelCache,
-  type LocalModelInfo,
-} from '../../adapters/asr/local-whisper';
-import { downloadPack, MODEL_PACKS, type PackProgress } from '../../adapters/asr/model-store';
+import { detectLocalModel, type LocalModelInfo } from '../../adapters/asr/local-whisper';
+import type { ModelPack, PackProgress } from '../../adapters/asr/model-store';
+import { LocalModelDialog } from './LocalModelDialog';
 import { describeError } from '../format';
 import { Dialog } from './Dialog';
 
@@ -24,7 +21,7 @@ interface Props {
   /** 本地模型探测（默认查缓存 + public/models/） */
   asrProbe?: LocalModelProbe;
   /** 模型下载器（测试里注入假的，不发真实请求） */
-  download?: (id: typeof MODEL_PACKS[number]['id'], onProgress: (p: PackProgress) => void) => Promise<void>;
+  download?: (id: ModelPack['id'], onProgress: (p: PackProgress) => void) => Promise<void>;
 }
 
 /**
@@ -114,8 +111,6 @@ function cardDesc(
  */
 export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: Props) {
   const probe = asrProbe ?? DEFAULT_PROBE;
-  const downloader = download ?? downloadPack;
-  const pack = MODEL_PACKS[0];
   const [mode, setMode] = useState<VoiceMode>(initial?.mode ?? defaultVoiceSettings().mode);
   const [baseUrl, setBaseUrl] = useState(initial?.cloudStt?.baseUrl ?? '');
   const [apiKey, setApiKey] = useState(initial?.cloudStt?.apiKey ?? '');
@@ -129,9 +124,10 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
   const [pendingMode, setPendingMode] = useState<VoiceMode | null>(null);
   /** 云端配置弹窗 */
   const [cloudOpen, setCloudOpen] = useState(false);
-  /** 模型下载进度：null = 没在下载 */
-  const [packProgress, setPackProgress] = useState<PackProgress | null>(null);
-  const [packError, setPackError] = useState<string | null>(null);
+  /** 本地模型管理弹窗 */
+  const [localOpen, setLocalOpen] = useState(false);
+  /** 当前选中的本地模型 id（下载/切换后更新，用于弹窗里的「使用中」） */
+  const [activeLocalId, setActiveLocalId] = useState<string | null>(initial?.localModelId ?? null);
 
   // 只在挂载时探测一次：默认「不可用」，探测成功再点亮（首帧文案因此是确定的，不会闪）
   useEffect(() => {
@@ -175,23 +171,18 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
     setSelfTest(result);
   }
 
-  /** 下载模型 → 点亮本地模型 → 直接保存（下载完不用再点一次保存） */
-  async function handleDownload() {
-    setPackError(null);
-    setPackProgress({ stage: 'downloading', pct: 0 });
+  /** 选一个本地模型作为当前模型：切模式 + 存 id + 关弹窗 */
+  async function handleUseLocal(pack: ModelPack) {
+    setLocalModel({ id: pack.id as LocalModelInfo['id'], label: pack.label, sizeMB: pack.sizeMB });
+    setActiveLocalId(pack.id);
+    setMode('local-whisper');
+    setLocalOpen(false);
     try {
-      await downloader(pack.id, (progress) => setPackProgress(progress));
-      resetLocalModelCache();
-      const detected = await probe.detect();
-      setLocalModel(detected ?? { id: pack.id, label: pack.label, sizeMB: pack.sizeMB });
-      setMode('local-whisper');
-      const saved = await saveVoiceSettings({ mode: 'local-whisper' });
+      const saved = await saveVoiceSettings({ mode: 'local-whisper', localModelId: pack.id });
       onSaved(saved);
-      setNotice('本地模型已就绪，以后录音会自动转文字。');
+      setNotice('已切换到本地模型，以后录音会自动转文字。');
     } catch (caught) {
-      setPackError(describeError(caught));
-    } finally {
-      setPackProgress(null);
+      setError(describeError(caught));
     }
   }
 
@@ -258,47 +249,20 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
                   配置…
                 </button>
               )}
-              {isLocal && localModel === null && (
+              {isLocal && (
                 <button
                   type="button"
                   className="voice-opt-link"
-                  data-testid="voice-download"
-                  onClick={() => void handleDownload()}
-                  disabled={packProgress !== null}
+                  data-testid="voice-local-config"
+                  onClick={() => setLocalOpen(true)}
                 >
-                  {packProgress ? '下载中…' : '下载并启用'}
+                  配置…
                 </button>
               )}
             </div>
           );
         })}
       </div>
-
-      {packProgress && (
-        <div className="voice-progress" data-testid="voice-progress">
-          <div className="voice-progress-bar">
-            <span
-              className="voice-progress-fill"
-              style={{
-                width: `${
-                  packProgress.stage === 'downloading' || packProgress.stage === 'saving'
-                    ? packProgress.pct
-                    : packProgress.stage === 'extracting'
-                      ? 100
-                      : 0
-                }%`,
-              }}
-            />
-          </div>
-          <span className="voice-progress-text">
-            {packProgress.stage === 'downloading' && `正在下载 ${packProgress.pct}%（约 ${pack.zipMB}MB）`}
-            {packProgress.stage === 'extracting' && '正在解压…'}
-            {packProgress.stage === 'saving' && `正在写入 ${packProgress.pct}%`}
-            {packProgress.stage === 'done' && '完成了'}
-          </span>
-        </div>
-      )}
-      {packError && <p className="error small">{packError}</p>}
 
       <div className="button-row">
         <button
@@ -331,12 +295,21 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: P
         ]}
       >
         <p className="modal-sub">
-          {`本地识别模型占了 ${LOCAL_MODEL_MB}MB。切成「仅作记录」后它不会再被使用，可以在安装目录里删掉 `}
-          <code>models/whisper-base</code>
-          {' 释放空间（这一步需要你手动操作，应用运行时删不掉随包发布的文件）。'}
+          {`切成「仅作记录」后不再转写，模型文件还留在这台设备的浏览器里（约 ${LOCAL_MODEL_MB}MB）。`}
         </p>
-        <p className="modal-sub">之后想用回来，随时可以切回「本地模型」，不用重新下载。</p>
+        <p className="modal-sub">
+          随时可以切回来，不用重新下载；想彻底腾出空间，去「本地模型 → 配置…」里点删除。
+        </p>
       </Dialog>
+
+      {/* ---- 本地模型管理：下载 / 切换 / 删除 ---- */}
+      <LocalModelDialog
+        open={localOpen}
+        onDismiss={() => setLocalOpen(false)}
+        activeId={activeLocalId ?? localModel?.id ?? null}
+        onUse={(pack) => void handleUseLocal(pack)}
+        download={download}
+      />
 
       {/* ---- 云端 STT 配置：三栏不再插进页面，改成弹窗 ---- */}
       <Dialog

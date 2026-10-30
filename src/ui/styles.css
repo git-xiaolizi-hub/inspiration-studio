@@ -5255,3 +5255,58 @@ input[type='date'] {
   color: var(--muted-foreground);
   white-space: nowrap;
 }
+
+/* 本地模型管理弹窗 */
+.local-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.local-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.local-model-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.local-model-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.local-model-meta {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.local-model-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.voice-opt-link.is-danger {
+  color: color-mix(in srgb, #c0392b 80%, var(--foreground));
+}
+
+.button.small {
+  padding: 4px 12px;
+  font-size: 12px;
+}

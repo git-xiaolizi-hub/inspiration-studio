@@ -252,8 +252,8 @@ describe('ASR 适配器接口（UI 只依赖这个形状）', () => {
   });
 });
 
-describe('本地模型按需下载', () => {
-  it('未安装时给「下载并启用」，下载完自动选中并保存', async () => {
+describe('本地模型按需下载（走「配置…」弹窗）', () => {
+  it('未安装 → 弹窗里点下载 → 自动切换到本地模型并保存', async () => {
     let progressed = false;
     await mount(
       <VoiceSettingsSection
@@ -269,18 +269,23 @@ describe('本地模型按需下载', () => {
       />,
     );
 
-    const button = container.querySelector<HTMLButtonElement>('[data-testid="voice-download"]');
-    expect(button?.textContent).toContain('下载并启用');
+    await click(container.querySelector('[data-testid="voice-local-config"]') as HTMLButtonElement);
+    await waitFor(() => !!container.querySelector('[data-testid="local-model-whisper-base"]'), '弹窗打开');
 
-    await click(button as HTMLButtonElement);
+    const downloadBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="local-model-download-whisper-base"]',
+    );
+    expect(downloadBtn?.textContent).toContain('下载');
+
+    await click(downloadBtn as HTMLButtonElement);
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 40));
     });
 
     expect(progressed).toBe(true);
     const saved = await getVoiceSettings();
     expect(saved?.mode).toBe('local-whisper');
-    expect(container.textContent).toContain('本地模型已就绪');
+    expect(saved?.localModelId).toBe('whisper-base');
   });
 
   it('下载失败要显示人话错误，不能假装成功', async () => {
@@ -295,9 +300,13 @@ describe('本地模型按需下载', () => {
       />,
     );
 
-    await click(container.querySelector('[data-testid="voice-download"]') as HTMLButtonElement);
+    await click(container.querySelector('[data-testid="voice-local-config"]') as HTMLButtonElement);
+    await waitFor(() => !!container.querySelector('[data-testid="local-model-whisper-base"]'), '弹窗打开');
+    await click(
+      container.querySelector('[data-testid="local-model-download-whisper-base"]') as HTMLButtonElement,
+    );
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 40));
     });
 
     expect(container.textContent).toContain('HTTP 404');

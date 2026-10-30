@@ -5,8 +5,8 @@
  * - record-only（默认）：只录音备忘，不需要任何配置；
  * - cloud-stt：配置 base_url / api_key / model。**M2 只做表单校验 + mock 状态机**，
  *   「测试连通」不发任何真实请求（CHARTER §13.2：AI 不得为验收发起付费调用）；
- * - local-whisper：随应用发布的本地模型（M2.5 落地），离线可用、不花钱。
- *   模型文件不进 git，用 `npm run model:whisper` 拉到 public/models/ 后才会点亮。
+ * - local-whisper：本地模型（离线可用、不花钱）。模型不随包发布，
+ *   用户第一次用的时候从站点下载、存进浏览器 Cache Storage（见 adapters/asr/model-store.ts）。
  *
  * 持久化在 settings 表：`{ key: 'voice', value: VoiceSettings, updatedAt }`。
  */
@@ -25,6 +25,11 @@ export interface CloudSttConfig {
 export interface VoiceSettings {
   mode: VoiceMode;
   cloudStt?: CloudSttConfig;
+  /**
+   * 选中的本地模型 id（`whisper-base` / 以后新增的模型）。
+   * 不填 = 用探测到的第一个可用的（向后兼容老备份）。
+   */
+  localModelId?: string;
   updatedAt: number;
 }
 
@@ -74,6 +79,9 @@ export async function getVoiceSettings(): Promise<VoiceSettings | null> {
       model: typeof cloud.model === 'string' ? cloud.model : '',
     };
   }
+  if (typeof candidate.localModelId === 'string' && candidate.localModelId) {
+    settings.localModelId = candidate.localModelId;
+  }
   return settings;
 }
 
@@ -89,6 +97,9 @@ export async function saveVoiceSettings(
 
   const cloudStt = patch.cloudStt ?? existing?.cloudStt;
   if (cloudStt) next.cloudStt = cloudStt;
+
+  const localModelId = patch.localModelId ?? existing?.localModelId;
+  if (localModelId) next.localModelId = localModelId;
 
   await putSetting({
     key: VOICE_SETTING_KEY,
