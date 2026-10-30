@@ -4527,6 +4527,52 @@ input[type='date'] {
 
 .ai-rec-signup:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
+/* 模型选择：可输入的自绘 Combobox（和协议/厂商/计费方式同一套外观） */
+/* 加 .ai-rec-line 提权：.ai-rec-menu-wrap 有 flex:none，会把这里盖掉 */
+.ai-rec-line .ai-rec-combo {
+  flex: 1 1 40%;
+  min-width: 180px;
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.ai-rec-combo .ai-rec-model {
+  flex: 1 1 auto;
+  width: 100%;
+  padding-right: 26px;
+}
+
+.ai-rec-caret-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 2px 5px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-3);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.ai-rec-caret-btn:hover { color: var(--fg); }
+
+.ai-rec-combo .ai-rec-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ai-rec-menu-empty {
+  display: block;
+  padding: 8px 10px;
+  color: var(--fg-3);
+  font-size: 11px;
+}
 /* 模型行上的上下文窗口：一个小下拉（自动 / 128k / 200k / 256k / 512k / 1M） */
 .ai-rec-ctx {
   width: auto !important;

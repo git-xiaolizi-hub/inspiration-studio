@@ -429,9 +429,9 @@ describe('B. 推荐配置弹窗', () => {
 
     // 新那把 Key 的模型改成 gemini
     const modelLines = qa('.ai-rec-model-line');
-    const lastModel = modelLines[modelLines.length - 1]?.querySelector('select') as HTMLSelectElement | null;
+    const lastModel = modelLines[modelLines.length - 1]?.querySelector('input') as HTMLInputElement | null;
     expect(lastModel).not.toBeNull();
-    await setValue(lastModel as HTMLSelectElement, 'gemini-4-argon');
+    await setValue(lastModel as HTMLInputElement, 'gemini-4-argon');
 
     const save = q<HTMLButtonElement>('[data-testid="ai-recommend-save"]');
     await click(save);
@@ -798,7 +798,7 @@ describe('D. 一个入口：载入已有配置 / 推荐置顶 / 拖拽顺序 / �
     ]);
     // 灵绘还是同一组：原有两把 + 补的 gemini（opus 已存在，不再加）
     expect(qa('.ai-rec-key')).toHaveLength(5);
-    expect(text()).toContain('gemini-4-carbon');
+    expect(qa<HTMLInputElement>('.ai-rec-model').map((input) => input.value)).toContain('gemini-4-argon');
   });
 
   it('拖拽纯函数：把 from 挪到 to 的位置；未知 id 原样返回', () => {
@@ -938,5 +938,23 @@ describe('F. 窗口控件只出现在文本模型上；可以选「不声明」'
       ?.connections[0]?.models[0];
     expect(model?.contextLength).toBeUndefined();
     expect(model?.contextSource).toBe('none');
+  });
+});
+
+describe('G. 模型框可自由填写', () => {
+  it('预设表里没有的模型，直接打字也能保存', async () => {
+    await mountCard();
+    await openRecommend();
+    const modelInput = qa<HTMLInputElement>('.ai-rec-model')[0];
+    await setValue(modelInput, 'my-own-model-x1');
+    await setValue(byLabel<HTMLInputElement>('API Key 1-1') as HTMLInputElement, 'sk-deepseek');
+    await click(q('[data-testid="ai-recommend-save"]'));
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    const models = saved.providers.find((p) => p.id === 'deepseek')?.connections[0]?.models ?? [];
+    expect(models.map((m) => m.modelId)).toEqual(['my-own-model-x1']);
+    // 名录里没有 → 来源标成 default，窗口按兜底值，不假装知道
+    expect(models[0].contextSource).toBe('default');
   });
 });

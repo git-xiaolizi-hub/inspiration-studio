@@ -47,6 +47,7 @@ import type {
 import { GUIDE_VENDORS, LINGHUI_SIGNUP_URL } from '../../adapters/ai-models/model-guide';
 import { Dialog } from '../components/Dialog';
 import { RecMenu } from './RecMenu';
+import { ModelCombo } from './ModelCombo';
 import type { RecMenuOption } from './RecMenu';
 import { canSyncTest, listModels, runSelfTest } from '../../adapters/ai-models/client';
 import { formatFxHint } from '../../core/fx';
@@ -1329,41 +1330,19 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
 
                   {key.models.map((model) => {
                     const lastModel = key.models.length <= 1;
-                    const known = candidates.includes(model.modelId);
                     const probe = modelProbes[model.id];
                     const resolved = resolveContext(model);
                     return (
                       <div className="ai-rec-line ai-rec-model-line" key={model.id}>
-                        {group.vendor === CUSTOM ? (
-                          <input
-                            type="text"
-                            className="ai-rec-model"
-                            list={`ai-model-options-${group.id}`}
-                            aria-label={`模型 ${groupIndex + 1}-${keyIndex + 1}`}
-                            value={model.modelId}
-                            placeholder="填模型 id，也可以从下拉里挑"
-                            onChange={(event) => setModel(group.id, key.id, model.id, event.target.value)}
-                          />
-                        ) : (
-                          <select
-                            className="ai-rec-model"
-                            aria-label={`模型 ${groupIndex + 1}-${keyIndex + 1}`}
-                            value={model.modelId}
-                            onChange={(event) => setModel(group.id, key.id, model.id, event.target.value)}
-                          >
-                            {!known && <option value={model.modelId}>{model.modelId || '（未选）'}</option>}
-                            {candidates.map((modelId) => (
-                              <option key={modelId} value={modelId}>
-                                {modelId}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        <datalist id={`ai-model-options-${group.id}`}>
-                          {candidates.map((modelId) => (
-                            <option key={modelId} value={modelId} />
-                          ))}
-                        </datalist>
+                        <ModelCombo
+                          value={model.modelId}
+                          candidates={candidates}
+                          ariaLabel={`模型 ${groupIndex + 1}-${keyIndex + 1}`}
+                          placeholder={
+                            group.vendor === CUSTOM ? '填模型 id，也可以从下拉里挑' : '选一个，或直接填模型 id'
+                          }
+                          onChange={(next) => setModel(group.id, key.id, model.id, next)}
+                        />
                         {/*
                           1M：模型本身支持，但大多数 OpenAI 兼容接口默认只按 128k 算。
                           勾上 = 在配置里声明这条模型的上下文窗口是 1M，生成页的长文会话才不会被过早判定「太长」。
