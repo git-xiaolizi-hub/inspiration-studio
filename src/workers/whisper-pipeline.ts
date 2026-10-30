@@ -196,9 +196,14 @@ export const createWhisperTranscriber: TranscriberFactory = async ({
   if (!isFirstLoad) onProgress({ stage: 'loading-model', pct: 100 });
 
   const transcriber: Transcriber = async (audio, options) => {
+    // ⚠️ 必须切片：whisper 只在 30 秒窗口内工作，整段直接喂进去，超过 30 秒的部分会被丢掉
+    // （真机实测：169 秒的录音只转出 109 个字，正好停在 30 秒处）。
+    // chunk_length_s + stride_length_s 让它按窗口滚动，并把接缝处的重叠对齐。
     const output = await asr(audio, {
       language: options.language ?? 'chinese',
       task: 'transcribe',
+      chunk_length_s: 30,
+      stride_length_s: 5,
     });
     if (Array.isArray(output)) {
       return { text: output.map((item) => item?.text ?? '').join(' ') };
