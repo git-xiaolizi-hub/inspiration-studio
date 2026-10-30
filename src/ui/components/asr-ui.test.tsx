@@ -141,7 +141,7 @@ describe('设置 → 语音：C 项由模型是否就绪决定', () => {
 
     const radio = container.querySelector<HTMLInputElement>('input[value="local-whisper"]');
     expect(radio?.disabled).toBe(true);
-    expect(container.textContent).toContain('这台设备还没有本地模型（约 78MB）');
+    expect(container.textContent).toContain('还没下载（约 52MB，解压占 78MB）');
   });
 
   it('模型就绪：C 项可选中，显示 base/78MB 并保存为 local-whisper', async () => {
@@ -160,8 +160,7 @@ describe('设置 → 语音：C 项由模型是否就绪决定', () => {
     expect(container.textContent).toContain('使用本地模型（base，78MB）');
 
     await click(radio as HTMLInputElement);
-    // 默认是「仅作记录」，切到本地要先过一道确认（提醒体积）
-    await click(container.querySelector('[data-testid="voice-confirm-local"]') as HTMLElement);
+    // 模型已就绪时直接选中，不再弹「要不要下载」的确认
     expect(radio?.checked).toBe(true);
 
     await click(findButton('保存语音设置'));
@@ -250,5 +249,57 @@ describe('ASR 适配器接口（UI 只依赖这个形状）', () => {
   it('AsrAdapter.transcribe(blob, opts) 的契约在类型层面成立', () => {
     const adapter: AsrAdapter = { transcribe: async () => 'x' };
     expect(typeof adapter.transcribe).toBe('function');
+  });
+});
+
+describe('本地模型按需下载', () => {
+  it('未安装时给「下载并启用」，下载完自动选中并保存', async () => {
+    let progressed = false;
+    await mount(
+      <VoiceSettingsSection
+        initial={null}
+        onSaved={() => undefined}
+        asrProbe={{ detect: async () => null }}
+        download={async (_id, onProgress) => {
+          onProgress({ stage: 'downloading', pct: 40 });
+          progressed = true;
+          onProgress({ stage: 'saving', pct: 100 });
+          onProgress({ stage: 'done' });
+        }}
+      />,
+    );
+
+    const button = container.querySelector<HTMLButtonElement>('[data-testid="voice-download"]');
+    expect(button?.textContent).toContain('下载并启用');
+
+    await click(button as HTMLButtonElement);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    expect(progressed).toBe(true);
+    const saved = await getVoiceSettings();
+    expect(saved?.mode).toBe('local-whisper');
+    expect(container.textContent).toContain('本地模型已就绪');
+  });
+
+  it('下载失败要显示人话错误，不能假装成功', async () => {
+    await mount(
+      <VoiceSettingsSection
+        initial={null}
+        onSaved={() => undefined}
+        asrProbe={{ detect: async () => null }}
+        download={async () => {
+          throw new Error('下载失败：HTTP 404');
+        }}
+      />,
+    );
+
+    await click(container.querySelector('[data-testid="voice-download"]') as HTMLButtonElement);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    expect(container.textContent).toContain('HTTP 404');
   });
 });

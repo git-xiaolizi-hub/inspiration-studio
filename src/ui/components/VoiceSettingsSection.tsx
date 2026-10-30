@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CloudSttConfig, SelfTestState, VoiceMode, VoiceSettings } from '../../core/settings';
 import { defaultVoiceSettings, runCloudSttSelfTest, saveVoiceSettings, validateCloudSttForm } from '../../core/settings';
-import { detectLocalModel, type LocalModelInfo } from '../../adapters/asr/local-whisper';
+import {
+  detectLocalModel,
+  resetLocalModelCache,
+  type LocalModelInfo,
+} from '../../adapters/asr/local-whisper';
+import { downloadPack, MODEL_PACKS, type PackProgress } from '../../adapters/asr/model-store';
 import { describeError } from '../format';
 import { Dialog } from './Dialog';
 
@@ -16,8 +21,10 @@ interface Props {
   /** 已保存的设置；null = 首次（还没选过） */
   initial: VoiceSettings | null;
   onSaved: (settings: VoiceSettings) => void;
-  /** 本地模型探测（默认查 public/models/） */
+  /** 本地模型探测（默认查缓存 + public/models/） */
   asrProbe?: LocalModelProbe;
+  /** 模型下载器（测试里注入假的，不发真实请求） */
+  download?: (id: typeof MODEL_PACKS[number]['id'], onProgress: (p: PackProgress) => void) => Promise<void>;
 }
 
 /**
@@ -44,7 +51,7 @@ const CARD_LABELS: Record<VoiceMode, string> = {
  * 卡片里会被省略号截断，但读屏和测试拿到的都是完整文本。
  */
 const LOCAL_MODEL_MISSING_HINT =
-  '这台设备还没有本地模型（约 78MB）。网页版不预装，桌面版可一键下载；' +
+  '还没下载（约 52MB，解压占 78MB）。点右边「下载并启用」；' +
   '不想下载就先用「云端模型」或「仅作记录」。';
 
 function localModelLabel(model: LocalModelInfo): string {
@@ -105,8 +112,10 @@ function cardDesc(
  * 行为边界没变：`保存语音设置` 仍然是一次显式保存；「测试连通」仍然只做表单校验
  * （M2 契约：不为验收发真实付费请求）。
  */
-export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
+export function VoiceSettingsSection({ initial, onSaved, asrProbe, download }: Props) {
   const probe = asrProbe ?? DEFAULT_PROBE;
+  const downloader = download ?? downloadPack;
+  const pack = MODEL_PACKS[0];
   const [mode, setMode] = useState<VoiceMode>(initial?.mode ?? defaultVoiceSettings().mode);
   const [baseUrl, setBaseUrl] = useState(initial?.cloudStt?.baseUrl ?? '');
   const [apiKey, setApiKey] = useState(initial?.cloudStt?.apiKey ?? '');
@@ -120,6 +129,9 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
   const [pendingMode, setPendingMode] = useState<VoiceMode | null>(null);
   /** 云端配置弹窗 */
   const [cloudOpen, setCloudOpen] = useState(false);
+  /** 模型下载进度：null = 没在下载 */
+  const [packProgress, setPackProgress] = useState<PackProgress | null>(null);
+  const [packError, setPackError] = useState<string | null>(null);
 
   // 只在挂载时探测一次：默认「不可用」，探测成功再点亮（首帧文案因此是确定的，不会闪）
   useEffect(() => {
@@ -141,15 +153,11 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
   const cloudErrors = useMemo(() => validateCloudSttForm(cloudConfig), [baseUrl, apiKey, model]);
   const cloudConfigured = Object.keys(cloudErrors).length === 0;
 
-  /** 选一个模式：涉及 78MB 的去留时先弹提醒，确认后才真的切 */
+  /** 选一个模式：只有「本地 → 仅记录」需要提一句（模型文件还在，只是不再用） */
   function pickMode(next: VoiceMode): void {
     if (next === mode) return;
     if (next === 'record-only' && mode === 'local-whisper') {
       setPendingMode('record-only');
-      return;
-    }
-    if (next === 'local-whisper' && mode === 'record-only') {
-      setPendingMode('local-whisper');
       return;
     }
     setMode(next);
@@ -165,6 +173,26 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
     setSelfTest({ status: 'validating', message: '正在校验表单…（不会发起网络请求）' });
     const result = await runCloudSttSelfTest(cloudConfig);
     setSelfTest(result);
+  }
+
+  /** 下载模型 → 点亮本地模型 → 直接保存（下载完不用再点一次保存） */
+  async function handleDownload() {
+    setPackError(null);
+    setPackProgress({ stage: 'downloading', pct: 0 });
+    try {
+      await downloader(pack.id, (progress) => setPackProgress(progress));
+      resetLocalModelCache();
+      const detected = await probe.detect();
+      setLocalModel(detected ?? { id: pack.id, label: pack.label, sizeMB: pack.sizeMB });
+      setMode('local-whisper');
+      const saved = await saveVoiceSettings({ mode: 'local-whisper' });
+      onSaved(saved);
+      setNotice('本地模型已就绪，以后录音会自动转文字。');
+    } catch (caught) {
+      setPackError(describeError(caught));
+    } finally {
+      setPackProgress(null);
+    }
   }
 
   async function handleSave() {
@@ -190,9 +218,8 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
     <section className="card" data-block="voice">
       <h3>语音识别</h3>
       <p className="settings-block-sub">
-        默认只存录音，不占空间也不花钱。想要文字，再选本地模型（离线、需下载）或云端模型（更准、按量计费）。
+        本地模型（离线可用、需下载），云端模型（需联网、按量计费）。
       </p>
-
       <div className="voice-options">
         {MODES.map((candidate) => {
           const isLocal = candidate === 'local-whisper';
@@ -231,10 +258,47 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
                   配置…
                 </button>
               )}
+              {isLocal && localModel === null && (
+                <button
+                  type="button"
+                  className="voice-opt-link"
+                  data-testid="voice-download"
+                  onClick={() => void handleDownload()}
+                  disabled={packProgress !== null}
+                >
+                  {packProgress ? '下载中…' : '下载并启用'}
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+
+      {packProgress && (
+        <div className="voice-progress" data-testid="voice-progress">
+          <div className="voice-progress-bar">
+            <span
+              className="voice-progress-fill"
+              style={{
+                width: `${
+                  packProgress.stage === 'downloading' || packProgress.stage === 'saving'
+                    ? packProgress.pct
+                    : packProgress.stage === 'extracting'
+                      ? 100
+                      : 0
+                }%`,
+              }}
+            />
+          </div>
+          <span className="voice-progress-text">
+            {packProgress.stage === 'downloading' && `正在下载 ${packProgress.pct}%（约 ${pack.zipMB}MB）`}
+            {packProgress.stage === 'extracting' && '正在解压…'}
+            {packProgress.stage === 'saving' && `正在写入 ${packProgress.pct}%`}
+            {packProgress.stage === 'done' && '完成了'}
+          </span>
+        </div>
+      )}
+      {packError && <p className="error small">{packError}</p>}
 
       <div className="button-row">
         <button
@@ -272,30 +336,6 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
           {' 释放空间（这一步需要你手动操作，应用运行时删不掉随包发布的文件）。'}
         </p>
         <p className="modal-sub">之后想用回来，随时可以切回「本地模型」，不用重新下载。</p>
-      </Dialog>
-
-      {/* ---- 提醒 2：仅作记录 → 本地模型（把 78MB 用起来） ---- */}
-      <Dialog
-        open={pendingMode === 'local-whisper'}
-        title="切回本地模型？"
-        label="下载本地模型提醒"
-        onDismiss={() => setPendingMode(null)}
-        actions={[
-          { label: '取消', onClick: () => setPendingMode(null) },
-          {
-            label: '下载并使用',
-            kind: 'primary',
-            onClick: confirmPendingMode,
-            testId: 'voice-confirm-local',
-          },
-        ]}
-      >
-        <p className="modal-sub">{`本地模型需要 ${LOCAL_MODEL_MB}MB 空间。现在下载回来吗？`}</p>
-        <p className="modal-sub">
-          {'模型放在 '}
-          <code>models/whisper-base</code>
-          {'，装好之后就不用再下载，也不联网。'}
-        </p>
       </Dialog>
 
       {/* ---- 云端 STT 配置：三栏不再插进页面，改成弹窗 ---- */}

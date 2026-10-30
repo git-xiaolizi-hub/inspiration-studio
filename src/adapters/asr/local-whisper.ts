@@ -10,6 +10,7 @@
  * - 音频转换零第三方依赖：AudioContext.decodeAudioData + OfflineAudioContext 重采样到 16kHz 单声道。
  */
 import type { LocalModelId } from './protocol';
+import { isPackCached } from './model-store';
 import { decodeAudioBlob } from './audio-decode';
 import { AsrError } from './errors';
 import {
@@ -49,6 +50,8 @@ export interface DetectDeps {
   baseUrl?: string;
   /** 探测超时：模型目录是本地静态资源，超过这个时间基本就是没有 */
   timeoutMs?: number;
+  /** 测试用：跳过 Cache Storage 查询 */
+  skipCache?: boolean;
 }
 
 async function probeFile(
@@ -66,7 +69,12 @@ async function probeFile(
       cache: 'no-store',
       signal: controller?.signal,
     });
-    return Boolean(response?.ok);
+    if (!response?.ok) return false;
+    // 只认 200 不够：Vite / 静态托管在文件不存在时会**回退成 index.html 并返回 200**，
+    // 于是「模型在不在」永远判成在（真机实测：删掉 config.json 仍然 200）。
+    // 这里要求正文确实是 JSON，才算文件真的存在。
+    const text = await response.text();
+    return text.trimStart().startsWith('{');
   } catch {
     return false;
   } finally {
@@ -75,8 +83,10 @@ async function probeFile(
 }
 
 /**
- * 探测随应用发布的模型：只看本地静态目录里有没有 config.json。
- * 不发任何跨域请求（同一 origin），也不碰 ModelScope / HF。
+ * 探测模型在哪：
+ * 1. **浏览器缓存**（用户点过「下载并启用」→ 存在 Cache Storage 里，网页版靠这个）；
+ * 2. 站点静态目录 `public/models/`（桌面版 / 开发机自带，网页版没有）。
+ * 不发任何跨域请求，也不碰 ModelScope / HF。
  */
 export async function detectLocalModel(deps: DetectDeps = {}): Promise<LocalModelInfo | null> {
   const fetchImpl =
@@ -85,8 +95,10 @@ export async function detectLocalModel(deps: DetectDeps = {}): Promise<LocalMode
 
   const baseUrl = deps.baseUrl ?? modelsBaseUrl();
   const timeoutMs = deps.timeoutMs ?? 4000;
+  const probeCache = deps.skipCache !== true;
 
   for (const model of LOCAL_MODELS) {
+    if (probeCache && (await isPackCached(model.id))) return model;
     const url = new URL(`${model.id}/config.json`, baseUrl).href;
     if (await probeFile(fetchImpl, url, timeoutMs)) return model;
   }

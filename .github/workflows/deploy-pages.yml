@@ -29,6 +29,15 @@ jobs:
 
       - run: npm ci
 
+      # 语音模型不提交进 git（52MB）。构建时从 Release 取一份放进 public/model-packs/，
+      # 这样部署后的站点里模型与页面同源，浏览器能直接取（Release 直链没有 CORS 头）。
+      - name: Fetch ASR model pack from Release
+        run: |
+          mkdir -p public/model-packs
+          URL="https://github.com/${{ github.repository }}/releases/download/models-v1/whisper-base.zip"
+          curl -fSL --retry 3 -o public/model-packs/whisper-base.zip "$URL"
+          ls -lh public/model-packs/
+
       - name: Build (base = /<repo>/)
         run: npm run build
         env:

@@ -43,6 +43,7 @@
  * 这里按 models 目录推出同级 ort 目录，完全绕开 CDN。
  */
 import type { Transcriber, TranscriberFactory } from './asr-worker-core';
+import { MODEL_CACHE_NAME } from '../adapters/asr/model-spec';
 
 interface WhisperOutput {
   text?: string;
@@ -118,6 +119,18 @@ async function loadPipeline(
   env.allowRemoteModels = false; // 绝不联网拉模型
   env.allowLocalModels = true;
   env.localModelPath = toLocalModelPath(modelBaseUrl);
+
+  // 用户点「下载并启用」后，模型文件在 Cache Storage 里（见 adapters/asr/model-store.ts）。
+  // transformers 先在缓存里按 localPath 找，找不到再退回本地静态目录 —— 两条路都留着：
+  // 网页版靠缓存，桌面版/开发机靠 public/models/。
+  if (typeof caches !== 'undefined') {
+    try {
+      env.useCustomCache = true;
+      env.customCache = await caches.open(MODEL_CACHE_NAME);
+    } catch {
+      env.useCustomCache = false; // 隐私模式等禁用了 Cache Storage：退回静态目录
+    }
+  }
 
   // ort 的 wasm 仍要用绝对 URL（WebAssembly.instantiate 只认 URL），所以从绝对地址推
   const modelsUrl = resolveUrl(modelBaseUrl.replace(/\/*$/, '/'));

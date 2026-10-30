@@ -7,6 +7,7 @@ coverage/
 .tmp/
 *.local
 public/models/
+public/model-packs/
 public/ort/
 # 开发过程文档不进公开仓库（完整历史留在本地 master 分支）
 docs/

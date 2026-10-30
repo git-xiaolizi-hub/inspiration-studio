@@ -48,6 +48,16 @@ afterEach(() => {
 });
 
 describe('模型探测（只看随应用发布的静态目录）', () => {
+  it('200 但返回的是 index.html（静态托管回退）→ 判定为没有模型', async () => {
+    const fetchImpl = vi.fn(async () => new Response('<!doctype html><html></html>', { status: 200 }));
+    const detected = await detectLocalModel({
+      fetchImpl,
+      baseUrl: 'http://localhost:3000/models/',
+      skipCache: true,
+    });
+    expect(detected).toBeNull();
+  });
+
   it('base 的 config.json 可访问 → 返回 base，且只请求本地同源地址', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
@@ -67,7 +77,10 @@ describe('模型探测（只看随应用发布的静态目录）', () => {
   it('base 缺失时退回 tiny（中文明显更差，但仍可用）', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      return new Response('', { status: url.includes('whisper-tiny') ? 200 : 404 });
+      // 正文要是 JSON 才算真的存在（200 空串现在会被判成缺文件）
+      return new Response(url.includes('whisper-tiny') ? '{}' : '', {
+        status: url.includes('whisper-tiny') ? 200 : 404,
+      });
     });
 
     const detected = await detectLocalModel({ fetchImpl, baseUrl: 'http://localhost:3000/models/' });
