@@ -1223,38 +1223,6 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
         <p className="ai-rec-loading">正在读取已有配置…</p>
       )}
 
-      <div className="ai-rec-legend">
-        <h4>＋ 和 × 各管多大范围</h4>
-        <table>
-          <tbody>
-            <tr>
-              <td>＋ 在 base_url 上</td>
-              <td>整组再来一套：新地址 + 一条 Key + 一条模型</td>
-            </tr>
-            <tr>
-              <td>＋ 在 api_key 上</td>
-              <td>同一个地址再加一把 Key（含它名下一条模型）</td>
-            </tr>
-            <tr>
-              <td>＋ 在 model 上</td>
-              <td>这把 Key 下再加一个模型，共用上面的地址与 Key</td>
-            </tr>
-            <tr>
-              <td>× 在 base_url 上</td>
-              <td>删掉整组（含名下所有 Key 与模型）；至少保留一组</td>
-            </tr>
-            <tr>
-              <td>× 在 api_key 上</td>
-              <td>删掉这把 Key 与它名下的模型；每组至少保留一把</td>
-            </tr>
-            <tr>
-              <td>× 在 model 上</td>
-              <td>只删这一行；每把 Key 至少保留一个模型</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
       {filledKeys === 0 && pendingRemovals === 0 ? (
         <p className="ai-rec-hint">填一把 Key 就能保存；也可以点右上角「推荐配置」自动填好常用的三组。</p>
       ) : null}
