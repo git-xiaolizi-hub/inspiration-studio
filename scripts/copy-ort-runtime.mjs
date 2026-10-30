@@ -15,12 +15,17 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE_DIR = join(ROOT, 'node_modules', 'onnxruntime-web', 'dist');
 const TARGET_DIR = join(ROOT, 'public', 'ort');
+/** SenseVoice 直接调 onnxruntime-web（不经 transformers），用非 asyncify 的产物 */
+const TARGET_DIR_SV = join(ROOT, 'public', 'ort-sv');
 
 /** asyncify 变体 = transformers.js 对现代浏览器的默认选择 */
 const FILES = [
   'ort-wasm-simd-threaded.asyncify.wasm',
   'ort-wasm-simd-threaded.asyncify.mjs',
 ];
+
+/** 同一个 onnxruntime-web 包里、给 SenseVoice 用的那份 */
+const FILES_SV = ['ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.mjs'];
 
 let copied = 0;
 mkdirSync(TARGET_DIR, { recursive: true });
@@ -40,8 +45,23 @@ for (const file of FILES) {
   console.log(`  复制 ${file}（${(statSync(source).size / 1048576).toFixed(1)} MB）`);
 }
 
+let copiedSv = 0;
+mkdirSync(TARGET_DIR_SV, { recursive: true });
+for (const file of FILES_SV) {
+  const source = join(SOURCE_DIR, file);
+  const target = join(TARGET_DIR_SV, file);
+  if (!existsSync(source)) {
+    console.error(`❌ 缺少 ${source} —— 依赖没装好？先跑 npm install`);
+    process.exit(1);
+  }
+  if (existsSync(target) && statSync(target).size === statSync(source).size) continue;
+  copyFileSync(source, target);
+  copiedSv += 1;
+  console.log(`  复制 ${file}（${(statSync(source).size / 1048576).toFixed(1)} MB）→ ort-sv/`);
+}
+
 console.log(
   copied === 0
-    ? `ort 运行时已就绪（${FILES.length} 个文件无需更新）`
+    ? `ort 运行时已就绪（${FILES.length + FILES_SV.length} 个文件无需更新）`
     : `ort 运行时已就绪：${TARGET_DIR}`,
 );

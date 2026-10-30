@@ -9,6 +9,7 @@ coverage/
 public/models/
 public/model-packs/
 public/ort/
+public/ort-sv/
 # 开发过程文档不进公开仓库（完整历史留在本地 master 分支）
 docs/
 05-references/
@@ -16,3 +17,4 @@ M7-*.md
 M7b-*.md
 HANDOFF-*.md
 .npmrc
+public/_sv/

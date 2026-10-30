@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CloudSttConfig, SelfTestState, VoiceMode, VoiceSettings } from '../../core/settings';
 import { defaultVoiceSettings, runCloudSttSelfTest, saveVoiceSettings, validateCloudSttForm } from '../../core/settings';
-import { detectLocalModel, type LocalModelInfo } from '../../adapters/asr/local-whisper';
+import { detectLocalModel, type LocalModelInfo } from '../../adapters/asr/local-asr';
 import type { ModelPack, PackProgress } from '../../adapters/asr/model-store';
 import { LocalModelDialog } from './LocalModelDialog';
 import { describeError } from '../format';
@@ -48,7 +48,7 @@ const CARD_LABELS: Record<VoiceMode, string> = {
  * 卡片里会被省略号截断，但读屏和测试拿到的都是完整文本。
  */
 const LOCAL_MODEL_MISSING_HINT =
-  '还没下载（约 52MB，解压占 78MB）。点右边「下载并启用」；' +
+  '还没下载（229MB，中文最准）。点右边「配置…」下载；' +
   '不想下载就先用「云端模型」或「仅作记录」。';
 
 function localModelLabel(model: LocalModelInfo): string {

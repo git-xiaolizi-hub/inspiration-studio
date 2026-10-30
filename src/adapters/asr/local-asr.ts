@@ -1,18 +1,19 @@
 /**
- * 本地 whisper 适配层（M2.5）—— UI 唯一入口。
+ * 本地语音模型适配层 —— UI 唯一入口。
  *
  *   transcribe(blob, opts) → 文本
- *   isAvailable()          → 模型目录是否可访问
+ *   isAvailable()          → 模型是否就绪（下载过 / 静态目录里有）
  *
- * 关键取舍（详见 docs/ASR-NOTES.md）：
- * - 模型随应用发布（public/models/），运行时零下载：ModelScope 没有 CORS 头，直连已被证伪；
- * - 默认 whisper-base：tiny 中文实测出「打摩願」「於10邊」这类繁体+错字，base 是简体且可用；
- * - 音频转换零第三方依赖：AudioContext.decodeAudioData + OfflineAudioContext 重采样到 16kHz 单声道。
+ * 模型是 SenseVoice-Small（onnxruntime-web），不再是 whisper：
+ * 同样的 3 分钟录音，whisper-base 只转出前 30 秒、没有标点、同音字错一半；
+ * SenseVoice 一次给全文、自带标点。对照实验见 docs。
+ *
+ * 从哪加载：Cache Storage（用户点下载）→ 静态目录（桌面版/开发机）。
  */
 import type { LocalModelId } from './protocol';
-import { isPackCached } from './model-store';
 import { decodeAudioBlob } from './audio-decode';
 import { AsrError } from './errors';
+import { MODEL_PACKS, isPackCached } from './model-store';
 import {
   createWhisperClient,
   type AsrWorkerLike,
@@ -22,21 +23,23 @@ import {
 
 export interface LocalModelInfo {
   id: LocalModelId;
-  /** 给用户看的短名：base / tiny */
+  /** 给用户看的短名 */
   label: string;
+  /** 占用空间（MB） */
   sizeMB: number;
   note?: string;
 }
 
-/** 探测顺序 = 优先级：base 优先，tiny 只作为省空间备选 */
-export const LOCAL_MODELS: readonly LocalModelInfo[] = [
-  { id: 'whisper-base', label: 'base', sizeMB: 78 },
-  { id: 'whisper-tiny', label: 'tiny', sizeMB: 44, note: '中文准确率明显更差' },
-];
+/** 可下载的本地模型（来自统一的模型包清单） */
+export const LOCAL_MODELS: readonly LocalModelInfo[] = MODEL_PACKS.map((pack) => ({
+  id: pack.id,
+  label: pack.label,
+  sizeMB: pack.sizeMB,
+}));
 
-export const DEFAULT_LOCAL_MODEL_ID: LocalModelId = 'whisper-base';
+export const DEFAULT_LOCAL_MODEL_ID: LocalModelId = 'sense-voice';
 
-/** 模型目录的绝对 URL：按页面 base 算，dev / 子路径部署 / file:// 打包都能用 */
+/** 模型目录的绝对 URL */
 export function modelsBaseUrl(): string {
   const base = import.meta.env.BASE_URL || '/';
   const normalized = base.endsWith('/') ? base : `${base}/`;
@@ -48,7 +51,6 @@ export function modelsBaseUrl(): string {
 export interface DetectDeps {
   fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   baseUrl?: string;
-  /** 探测超时：模型目录是本地静态资源，超过这个时间基本就是没有 */
   timeoutMs?: number;
   /** 测试用：跳过 Cache Storage 查询 */
   skipCache?: boolean;
@@ -60,21 +62,13 @@ async function probeFile(
   timeoutMs: number,
 ): Promise<boolean> {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller
-    ? setTimeout(() => controller.abort(), timeoutMs)
-    : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const response = await fetchImpl(url, {
-      method: 'GET',
-      cache: 'no-store',
-      signal: controller?.signal,
-    });
+    const response = await fetchImpl(url, { method: 'GET', cache: 'no-store', signal: controller?.signal });
     if (!response?.ok) return false;
-    // 只认 200 不够：Vite / 静态托管在文件不存在时会**回退成 index.html 并返回 200**，
-    // 于是「模型在不在」永远判成在（真机实测：删掉 config.json 仍然 200）。
-    // 这里要求正文确实是 JSON，才算文件真的存在。
+    // 只认 200 不够：静态托管在文件不存在时会回退 index.html 并返回 200。
     const text = await response.text();
-    return text.trimStart().startsWith('{');
+    return !text.trimStart().startsWith('<');
   } catch {
     return false;
   } finally {
@@ -84,39 +78,35 @@ async function probeFile(
 
 /**
  * 探测模型在哪：
- * 1. **浏览器缓存**（用户点过「下载并启用」→ 存在 Cache Storage 里，网页版靠这个）；
- * 2. 站点静态目录 `public/models/`（桌面版 / 开发机自带，网页版没有）。
- * 不发任何跨域请求，也不碰 ModelScope / HF。
+ * 1. **浏览器缓存**（用户点过「下载」）；
+ * 2. 站点静态目录 `public/models/`（桌面版 / 开发机）。
  */
 export async function detectLocalModel(deps: DetectDeps = {}): Promise<LocalModelInfo | null> {
-  const fetchImpl =
-    deps.fetchImpl ?? (typeof fetch === 'function' ? (fetch as DetectDeps['fetchImpl']) : undefined);
-  if (!fetchImpl) return null;
-
   const baseUrl = deps.baseUrl ?? modelsBaseUrl();
-  const timeoutMs = deps.timeoutMs ?? 4000;
-  const probeCache = deps.skipCache !== true;
 
   for (const model of LOCAL_MODELS) {
-    if (probeCache && (await isPackCached(model.id))) return model;
-    const url = new URL(`${model.id}/config.json`, baseUrl).href;
-    if (await probeFile(fetchImpl, url, timeoutMs)) return model;
+    if (deps.skipCache !== true && (await isPackCached(model.id))) return model;
+
+    const fetchImpl =
+      deps.fetchImpl ?? (typeof fetch === 'function' ? (fetch as DetectDeps['fetchImpl']) : undefined);
+    if (!fetchImpl) continue;
+    const url = new URL(`${model.id}/tokens.txt`, baseUrl).href;
+    if (await probeFile(fetchImpl, url, deps.timeoutMs ?? 4000)) return model;
   }
   return null;
 }
 
-/** 供 UI 判断「C 项能不能点亮」 */
+/** 供 UI 判断「本地模型这一项能不能选」 */
 export async function isAvailable(): Promise<boolean> {
   return (await detectLocalModel()) !== null;
 }
 
 /* ------------------------------------------------------------------ */
-/* 转写（模型探测结果按会话缓存，避免每次录音都发一轮探测）            */
+/* 转写（探测结果按会话缓存，避免每次录音都发一轮探测）                */
 /* ------------------------------------------------------------------ */
 
 let resolvedModel: LocalModelInfo | null | undefined;
 
-/** 测试用：清掉探测缓存 */
 export function resetLocalModelCache(): void {
   resolvedModel = undefined;
 }
@@ -124,10 +114,7 @@ export function resetLocalModelCache(): void {
 async function resolveModel(): Promise<LocalModelInfo> {
   if (resolvedModel === undefined) resolvedModel = await detectLocalModel();
   if (!resolvedModel) {
-    throw new AsrError(
-      'MODEL_MISSING',
-      '没找到本地模型（public/models/whisper-base 或 whisper-tiny）',
-    );
+    throw new AsrError('MODEL_MISSING', '本地模型还没下载');
   }
   return resolvedModel;
 }
@@ -159,15 +146,12 @@ function getClient(model: LocalModelInfo): WhisperClient {
 }
 
 export interface LocalTranscribeOptions extends TranscribeOptions {
-  /** 只在需要强制重探测时用（例如用户刚跑完 npm run model:whisper） */
+  /** 强制重新探测（例如用户刚下载完模型） */
   refreshModel?: boolean;
 }
 
 /** Blob（webm/opus、mp4…）→ 中文文本。失败抛 AsrError（带 code，UI 据此给人话） */
-export async function transcribe(
-  blob: Blob,
-  options: LocalTranscribeOptions = {},
-): Promise<string> {
+export async function transcribe(blob: Blob, options: LocalTranscribeOptions = {}): Promise<string> {
   if (options.refreshModel) resetLocalModelCache();
 
   const model = await resolveModel();
@@ -178,7 +162,6 @@ export async function transcribe(
       signal: options.signal,
     });
   } catch (error) {
-    // 模型目录被删/加载失败时，下次重新探测一遍，而不是一直用坏结果
     if (error instanceof AsrError && (error.code === 'MODEL_MISSING' || error.code === 'LOAD_FAILED')) {
       resetLocalModelCache();
     }
@@ -191,11 +174,15 @@ export interface AsrAdapter {
   transcribe(blob: Blob, options?: LocalTranscribeOptions): Promise<string>;
 }
 
-export const localWhisperAdapter: AsrAdapter = { transcribe };
+export const localAsrAdapter: AsrAdapter = { transcribe };
 
-/** 关闭 Worker（页面卸载时可选调用；模型缓存也随之释放） */
-export function disposeLocalWhisper(): void {
+/** 兼容旧名字 */
+export const localWhisperAdapter = localAsrAdapter;
+
+export function disposeLocalAsr(): void {
   client?.dispose();
   client = null;
   clientModelId = null;
 }
+
+export const disposeLocalWhisper = disposeLocalAsr;

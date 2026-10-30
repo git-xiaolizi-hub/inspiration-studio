@@ -112,6 +112,6 @@ describe('设置页', () => {
     const whisper = radios.find((radio) => radio.value === 'local-whisper');
     expect(recordOnly?.checked).toBe(true);
     expect(whisper?.disabled).toBe(true);
-    expect(container.textContent).toContain('还没下载（约 52MB，解压占 78MB）');
+    expect(container.textContent).toContain('还没下载（229MB，中文最准）');
   });
 });

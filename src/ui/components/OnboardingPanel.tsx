@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { VoiceMode } from '../../core/settings';
-import { detectLocalModel, type LocalModelInfo } from '../../adapters/asr/local-whisper';
+import { detectLocalModel, type LocalModelInfo } from '../../adapters/asr/local-asr';
 
 interface Props {
   onChosen: (mode: VoiceMode) => void | Promise<void>;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { RecordAudio, RecordEntity } from '../../core/records/types';
 import { createRecord, updateRecord } from '../../core/records';
 import { getVoiceSettings, type VoiceMode } from '../../core/settings';
-import { localWhisperAdapter, type AsrAdapter } from '../../adapters/asr/local-whisper';
+import { localAsrAdapter, type AsrAdapter } from '../../adapters/asr/local-asr';
 import { appendTranscript, normalizeTranscript } from '../../adapters/asr/transcript';
 import { describeAsrError, isAsrCancel } from '../../adapters/asr/errors';
 import { describeError } from '../format';
@@ -36,7 +36,7 @@ const STAGE_LABELS: Record<string, string> = {
  * 转写失败只提示，不影响保存 —— 录音与记录照常落库（降级，不丢数据）。
  */
 export function RecordEditor({ initial, onSaved, onCancel, asr }: Props) {
-  const adapter = asr ?? localWhisperAdapter;
+  const adapter = asr ?? localAsrAdapter;
   const [text, setText] = useState(initial?.text ?? '');
   const [tagsInput, setTagsInput] = useState((initial?.tags ?? []).join(', '));
   const [audioPatch, setAudioPatch] = useState<RecordAudio | null | undefined>(undefined);

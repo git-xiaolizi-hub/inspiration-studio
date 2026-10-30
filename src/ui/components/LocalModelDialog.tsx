@@ -111,11 +111,9 @@ export function LocalModelDialog({
   const pct =
     progress?.stage === 'downloading' || progress?.stage === 'saving'
       ? progress.pct
-      : progress?.stage === 'extracting'
+      : progress?.stage === 'done'
         ? 100
-        : progress?.stage === 'done'
-          ? 100
-          : 0;
+        : 0;
 
   return (
     <Dialog
@@ -142,7 +140,7 @@ export function LocalModelDialog({
                   {isActive && <span className="voice-opt-tag">使用中</span>}
                 </span>
                 <span className="local-model-meta">
-                  {pack.sizeMB}MB（下载约 {pack.zipMB}MB）·{' '}
+                  {pack.sizeMB}MB（下载 {pack.downloadMB}MB）·{' '}
                   {state === 'checking'
                     ? '检查中…'
                     : state === 'present'
@@ -198,7 +196,6 @@ export function LocalModelDialog({
           </div>
           <span className="voice-progress-text">
             {progress.stage === 'downloading' && `正在下载 ${progress.pct}%`}
-            {progress.stage === 'extracting' && '正在解压…'}
             {progress.stage === 'saving' && `正在写入 ${progress.pct}%`}
             {progress.stage === 'done' && '完成'}
           </span>

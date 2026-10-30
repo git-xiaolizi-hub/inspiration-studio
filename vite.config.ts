@@ -59,6 +59,15 @@ export default defineConfig({
   base: process.env.VITE_BASE ?? '/',
   plugins: [react(), optionalUiModules()],
   /**
+   * onnxruntime-web 不能被依赖预打包：它内部用
+   * `import(/* @vite-ignore *\/ url)` 动态加载 wasm 胶水，
+   * esbuild 预打包会把这个注释丢掉，于是开发服务器给 URL 加上 `?import`，
+   * 静态文件请求直接 500（实测：SenseVoice 首次接 ORT 时踩到）。
+   */
+  optimizeDeps: {
+    exclude: ['onnxruntime-web', 'onnxruntime-web/wasm'],
+  },
+  /**
    * M3R10 §3；**M3R11 §4 收窄**：开发期反向代理。
    *
    * 只有 `VENDOR_META[id].webCors === 'blocked'` 的厂商才需要它（现在只剩灵绘：

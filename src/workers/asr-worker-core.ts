@@ -59,7 +59,7 @@ function isTranscribeRequest(value: unknown): value is TranscribeRequest {
     typeof candidate.id === 'string' &&
     candidate.audio instanceof Float32Array &&
     typeof candidate.modelBaseUrl === 'string' &&
-    (candidate.modelId === 'whisper-base' || candidate.modelId === 'whisper-tiny')
+    (candidate.modelId === 'sense-voice')
   );
 }
 

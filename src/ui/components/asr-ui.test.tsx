@@ -10,7 +10,7 @@ import { getVoiceSettings, saveVoiceSettings } from '../../core/settings';
 import { closeDatabase, destroyDatabase } from '../../core/storage';
 import { getRecordEntity } from '../../core/records';
 import { AsrError } from '../../adapters/asr/errors';
-import type { AsrAdapter, LocalTranscribeOptions } from '../../adapters/asr/local-whisper';
+import type { AsrAdapter, LocalTranscribeOptions } from '../../adapters/asr/local-asr';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -141,7 +141,7 @@ describe('设置 → 语音：C 项由模型是否就绪决定', () => {
 
     const radio = container.querySelector<HTMLInputElement>('input[value="local-whisper"]');
     expect(radio?.disabled).toBe(true);
-    expect(container.textContent).toContain('还没下载（约 52MB，解压占 78MB）');
+    expect(container.textContent).toContain('还没下载（229MB，中文最准）');
   });
 
   it('模型就绪：C 项可选中，显示 base/78MB 并保存为 local-whisper', async () => {
@@ -150,14 +150,14 @@ describe('设置 → 语音：C 项由模型是否就绪决定', () => {
         initial={null}
         onSaved={() => undefined}
         asrProbe={{
-          detect: async () => ({ id: 'whisper-base', label: 'base', sizeMB: 78 }),
+          detect: async () => ({ id: 'sense-voice', label: 'SenseVoice', sizeMB: 229 }),
         }}
       />,
     );
 
     const radio = container.querySelector<HTMLInputElement>('input[value="local-whisper"]');
     await waitFor(() => radio?.disabled === false, 'C 项点亮');
-    expect(container.textContent).toContain('使用本地模型（base，78MB）');
+    expect(container.textContent).toContain('使用本地模型（SenseVoice，229MB）');
 
     await click(radio as HTMLInputElement);
     // 模型已就绪时直接选中，不再弹「要不要下载」的确认
@@ -270,10 +270,10 @@ describe('本地模型按需下载（走「配置…」弹窗）', () => {
     );
 
     await click(container.querySelector('[data-testid="voice-local-config"]') as HTMLButtonElement);
-    await waitFor(() => !!container.querySelector('[data-testid="local-model-whisper-base"]'), '弹窗打开');
+    await waitFor(() => !!container.querySelector('[data-testid="local-model-sense-voice"]'), '弹窗打开');
 
     const downloadBtn = container.querySelector<HTMLButtonElement>(
-      '[data-testid="local-model-download-whisper-base"]',
+      '[data-testid="local-model-download-sense-voice"]',
     );
     expect(downloadBtn?.textContent).toContain('下载');
 
@@ -285,7 +285,7 @@ describe('本地模型按需下载（走「配置…」弹窗）', () => {
     expect(progressed).toBe(true);
     const saved = await getVoiceSettings();
     expect(saved?.mode).toBe('local-whisper');
-    expect(saved?.localModelId).toBe('whisper-base');
+    expect(saved?.localModelId).toBe('sense-voice');
   });
 
   it('下载失败要显示人话错误，不能假装成功', async () => {
@@ -301,9 +301,9 @@ describe('本地模型按需下载（走「配置…」弹窗）', () => {
     );
 
     await click(container.querySelector('[data-testid="voice-local-config"]') as HTMLButtonElement);
-    await waitFor(() => !!container.querySelector('[data-testid="local-model-whisper-base"]'), '弹窗打开');
+    await waitFor(() => !!container.querySelector('[data-testid="local-model-sense-voice"]'), '弹窗打开');
     await click(
-      container.querySelector('[data-testid="local-model-download-whisper-base"]') as HTMLButtonElement,
+      container.querySelector('[data-testid="local-model-download-sense-voice"]') as HTMLButtonElement,
     );
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 40));

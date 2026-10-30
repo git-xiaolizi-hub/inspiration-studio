@@ -13,7 +13,7 @@ const request = (id: string) => ({
   id,
   audio: new Float32Array([0.1, 0.2, 0.3]),
   modelBaseUrl: 'http://localhost/models/',
-  modelId: 'whisper-base' as const,
+  modelId: 'sense-voice' as const,
 });
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -120,7 +120,7 @@ describe('ASR Worker 内核：消息协议', () => {
     const createTranscriber = vi.fn();
     const { core, posted } = createHarness(createTranscriber as never);
 
-    core.handle({ type: 'transcribe', id: 'g', audio: [1, 2, 3], modelBaseUrl: 'x', modelId: 'whisper-base' });
+    core.handle({ type: 'transcribe', id: 'g', audio: [1, 2, 3], modelBaseUrl: 'x', modelId: 'sense-voice' });
 
     expect(createTranscriber).not.toHaveBeenCalled();
     expect(posted.at(-1)).toMatchObject({ type: 'error', id: 'g', code: 'BAD_AUDIO' });

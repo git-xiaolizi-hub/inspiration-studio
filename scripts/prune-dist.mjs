@@ -48,7 +48,11 @@ let rewritten = 0;
 for (const file of wasmFiles) {
   const assetPath = `/assets/${file}`;
   const stableName = withoutHash(file);
-  const stableTarget = join(ORT_DIR, stableName);
+  // 两套运行时：ort/（transformers 用的 asyncify）与 ort-sv/（SenseVoice 直连 ORT）
+  const inOrt = existsSync(join(ORT_DIR, stableName));
+  const stableTarget = inOrt ? join(ORT_DIR, stableName) : join(DIST, 'ort-sv', stableName);
+  // 不能用 startsWith 判断：'/dist/ort-sv/x'.startsWith('/dist/ort') 也是 true
+  const stableUrl = inOrt ? `/ort/${stableName}` : `/ort-sv/${stableName}`;
 
   let referenced = false;
   for (const textFile of textFiles) {
@@ -58,10 +62,10 @@ for (const file of wasmFiles) {
 
     if (existsSync(stableTarget)) {
       // 指向随应用发布的固定文件（不带 hash，路径可预测）
-      writeFileSync(textFile, content.split(assetPath).join(`/ort/${stableName}`), 'utf8');
+      writeFileSync(textFile, content.split(assetPath).join(stableUrl), 'utf8');
       rewritten += 1;
     } else {
-      console.error(`❌ ${file} 仍被 ${textFile} 引用，但 dist/ort/${stableName} 不存在，不敢删`);
+      console.error(`❌ ${file} 仍被 ${textFile} 引用，但 dist/ort(-sv)/${stableName} 都不存在，不敢删`);
       process.exit(1);
     }
   }

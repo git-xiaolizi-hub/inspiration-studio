@@ -6,8 +6,8 @@
  * 否则主线程会因为 import 这个文件而把 worker 里的 transformers.js 拖进主包。
  */
 
-/** 模型来源：必须是随应用发布的静态目录（ModelScope 无 CORS，浏览器不能直连下载） */
-export type LocalModelId = 'whisper-base' | 'whisper-tiny';
+/** 本地模型 id。现在是 SenseVoice-Small（whisper 已下线，见 docs/asr） */
+export type LocalModelId = 'sense-voice';
 
 /** 进度阶段：先加载模型（可量化），再推理（whisper 无中间进度，pct 恒为 0 直到完成） */
 export type AsrStage = 'loading-model' | 'transcribing';
@@ -26,7 +26,7 @@ export interface TranscribeRequest {
   id: string;
   /** 16kHz 单声道 PCM，主线程已用 AudioContext + OfflineAudioContext 转好 */
   audio: Float32Array;
-  /** whisper 语言名（'chinese' / 'english' / 'auto' 交给模型自己判断） */
+  /** 语言：'chinese' | 'english'（SenseVoice 还会自动判断语种，这里只用来选 zh/en 头） */
   language?: string;
   /** 模型目录的**绝对** URL（以 / 结尾），由主线程按页面 base 算好传进来 */
   modelBaseUrl: string;
