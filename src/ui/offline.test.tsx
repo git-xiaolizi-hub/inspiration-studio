@@ -112,6 +112,6 @@ describe('设置页', () => {
     const whisper = radios.find((radio) => radio.value === 'local-whisper');
     expect(recordOnly?.checked).toBe(true);
     expect(whisper?.disabled).toBe(true);
-    expect(container.textContent).toContain('M2.5 提供；模型约 100–300MB，下载源已定为 ModelScope');
+    expect(container.textContent).toContain('这台设备还没有本地模型（约 78MB）');
   });
 });

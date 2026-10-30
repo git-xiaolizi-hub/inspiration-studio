@@ -28,9 +28,10 @@ describe('语音设置持久化', () => {
     expect(await getVoiceSettings()).toBeNull();
   });
 
-  it('默认选「本地模型」（78MB 随包发布），保存后能读回', async () => {
-    // R6：默认值 record-only → local-whisper（模型 78MB 已随应用发布，默认不用等于白占体积）
-    expect(defaultVoiceSettings().mode).toBe('local-whisper');
+  it('默认只存录音（不随包模型，用时再下载），保存后能读回', async () => {
+    // 2026-10-30 委托人改口径：本地模型 78MB 不进仓库、网页版根本没有文件，
+    // 默认选它等于首帧不可用 → 默认回到 record-only，要用时再让用户下载。
+    expect(defaultVoiceSettings().mode).toBe('record-only');
 
     await saveVoiceSettings({ mode: 'record-only' });
 
@@ -56,7 +57,7 @@ describe('语音设置持久化', () => {
   it('三个模式都有中文标签', () => {
     expect(VOICE_MODE_LABELS['record-only']).toContain('仅录音');
     expect(VOICE_MODE_LABELS['cloud-stt']).toContain('云端 STT');
-    expect(VOICE_MODE_LABELS['local-whisper']).toContain('M2.5');
+    expect(VOICE_MODE_LABELS['local-whisper']).toContain('离线');
   });
 });
 

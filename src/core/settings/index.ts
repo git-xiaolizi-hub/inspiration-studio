@@ -29,23 +29,24 @@ export interface VoiceSettings {
 }
 
 /**
- * 默认值：本地模型（R6 起）。
+ * 默认值：仅作记录（2026-10-30 起改回）。
  *
- * 为什么改：`public/models/whisper-base` **78MB 已经随包发布**，
- * 默认却停在「只录音」，等于白占体积、还要用户自己去发现这功能。
- * 委托人的口径：「默认就该用它」；想只留录音的人再切到 `record-only`（切换时会提醒 78MB）。
+ * 为什么改回来：
+ * 1. 本地模型**不随仓库发布**（`public/models` 在 .gitignore 里，78MB 不进 git），
+ *    所以在网页版 / GitHub Pages 上「本地模型」根本没有文件——默认选它等于首帧就不可用；
+ * 2. 委托人判断：模型体积大，不该默认占掉，应该「要用的时候再下载」；
+ * 3. 只录不转是零成本、零失败的路径，先让人用得起来，再引导升级。
  *
- * 注意：老备份里存的仍是显式的 `record-only`，读取时以库里的值为准，
- * 这个默认值只对「从未设置过」的库生效。
+ * 老库里显式存过的值照样以库为准，这个默认只对「从未设置过」生效。
  */
 export function defaultVoiceSettings(): VoiceSettings {
-  return { mode: 'local-whisper', updatedAt: 0 };
+  return { mode: 'record-only', updatedAt: 0 };
 }
 
 export const VOICE_MODE_LABELS: Record<VoiceMode, string> = {
   'record-only': '仅录音备忘（默认，无需配置）',
   'cloud-stt': '配置云端 STT（自带 key，按量计费）',
-  'local-whisper': '本地识别 whisper（M2.5 落地，离线运行）',
+  'local-whisper': '本地识别（离线运行，需先下载模型）',
 };
 
 export function isVoiceMode(value: unknown): value is VoiceMode {

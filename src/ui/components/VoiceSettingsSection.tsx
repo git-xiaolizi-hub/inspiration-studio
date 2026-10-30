@@ -44,13 +44,38 @@ const CARD_LABELS: Record<VoiceMode, string> = {
  * 卡片里会被省略号截断，但读屏和测试拿到的都是完整文本。
  */
 const LOCAL_MODEL_MISSING_HINT =
-  '本地模型随应用发布（M2.5 提供；模型约 100–300MB，下载源已定为 ModelScope）。' +
-  '未找到本地模型，请先运行 npm run model:whisper';
+  '这台设备还没有本地模型（约 78MB）。网页版不预装，桌面版可一键下载；' +
+  '不想下载就先用「云端模型」或「仅作记录」。';
 
 function localModelLabel(model: LocalModelInfo): string {
   const suffix = model.note ? `，${model.note}` : '';
-  return `使用本地模型（${model.label}，${model.sizeMB}MB，随应用发布${suffix}）`;
+  return `使用本地模型（${model.label}，${model.sizeMB}MB${suffix}）`;
 }
+
+/** 云端 STT 预设：只填地址和模型名，key 仍然用户自己填（不代填、不代存） */
+const STT_PRESETS: { id: string; name: string; baseUrl: string; model: string; fit: string }[] = [
+  {
+    id: 'sensevoice',
+    name: '硅基流动 · SenseVoice',
+    baseUrl: 'https://api.siliconflow.cn/v1/audio/transcriptions',
+    model: 'FunAudioLLM/SenseVoiceSmall',
+    fit: '中文 / 粤语 / 中英混说',
+  },
+  {
+    id: 'openai-whisper',
+    name: 'OpenAI · whisper-1',
+    baseUrl: 'https://api.openai.com/v1/audio/transcriptions',
+    model: 'whisper-1',
+    fit: '英文 / 需要时间轴',
+  },
+  {
+    id: 'relay',
+    name: '中转站（任意兼容地址）',
+    baseUrl: '',
+    model: 'whisper-1',
+    fit: '没有官方 key 时用',
+  },
+];
 
 /** 本地模型体积（MB）——两个提醒弹窗和副标题都用它，避免三处写死 78 */
 const LOCAL_MODEL_MB = 78;
@@ -165,7 +190,7 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
     <section className="card" data-block="voice">
       <h3>语音识别</h3>
       <p className="settings-block-sub">
-        默认用随包发布的本地模型：离线转写、不联网、不花钱。只想留录音就选「仅作记录」。
+        默认只存录音，不占空间也不花钱。想要文字，再选本地模型（离线、需下载）或云端模型（更准、按量计费）。
       </p>
 
       <div className="voice-options">
@@ -186,7 +211,6 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
                 />
                 <span className="voice-opt-title">
                   {CARD_LABELS[candidate]}
-                  {isLocal && <span className="voice-opt-tag">推荐</span>}
                   {isCloud && !cloudConfigured && (
                     <span className="voice-opt-tag is-warn">未配置</span>
                   )}
@@ -268,9 +292,9 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
       >
         <p className="modal-sub">{`本地模型需要 ${LOCAL_MODEL_MB}MB 空间。现在下载回来吗？`}</p>
         <p className="modal-sub">
-          {'这一版模型已经随应用发布（'}
+          {'模型放在 '}
           <code>models/whisper-base</code>
-          {'），点「下载并使用」就会切回去，不需要联网。'}
+          {'，装好之后就不用再下载，也不联网。'}
         </p>
       </Dialog>
 
@@ -294,8 +318,31 @@ export function VoiceSettingsSection({ initial, onSaved, asrProbe }: Props) {
         ]}
       >
         <p className="modal-sub">
-          走你自己的服务（OpenAI 兼容的 /audio/transcriptions）。key 只存在这台设备的浏览器里。
+          走你自己的 key（OpenAI 兼容的 /audio/transcriptions）。key 只存在这台设备的浏览器里。
         </p>
+        <div className="stt-presets">
+          <span className="stt-presets-title">没配过？从这三个里挑一个：</span>
+          {STT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className="stt-preset"
+              data-testid={`stt-preset-${preset.id}`}
+              onClick={() => {
+                setBaseUrl(preset.baseUrl);
+                setModel(preset.model);
+                setSelfTest({ status: 'idle' });
+              }}
+            >
+              <span className="stt-preset-name">{preset.name}</span>
+              <span className="stt-preset-fit">{preset.fit}</span>
+            </button>
+          ))}
+          <span className="stt-presets-note">
+            中文、粤语、中英混说选 SenseVoice（便宜、快、自带标点）；
+            纯英文或要时间轴选 whisper-1；想更准但要按分钟付费选 gpt-4o-transcribe。
+          </span>
+        </div>
         <div className="stt-form">
           <label className="field">
             <span>服务地址（base_url）</span>

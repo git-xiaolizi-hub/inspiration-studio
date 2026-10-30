@@ -141,7 +141,7 @@ describe('设置 → 语音：C 项由模型是否就绪决定', () => {
 
     const radio = container.querySelector<HTMLInputElement>('input[value="local-whisper"]');
     expect(radio?.disabled).toBe(true);
-    expect(container.textContent).toContain('未找到本地模型，请先运行 npm run model:whisper');
+    expect(container.textContent).toContain('这台设备还没有本地模型（约 78MB）');
   });
 
   it('模型就绪：C 项可选中，显示 base/78MB 并保存为 local-whisper', async () => {
@@ -157,9 +157,11 @@ describe('设置 → 语音：C 项由模型是否就绪决定', () => {
 
     const radio = container.querySelector<HTMLInputElement>('input[value="local-whisper"]');
     await waitFor(() => radio?.disabled === false, 'C 项点亮');
-    expect(container.textContent).toContain('使用本地模型（base，78MB，随应用发布）');
+    expect(container.textContent).toContain('使用本地模型（base，78MB）');
 
     await click(radio as HTMLInputElement);
+    // 默认是「仅作记录」，切到本地要先过一道确认（提醒体积）
+    await click(container.querySelector('[data-testid="voice-confirm-local"]') as HTMLElement);
     expect(radio?.checked).toBe(true);
 
     await click(findButton('保存语音设置'));
