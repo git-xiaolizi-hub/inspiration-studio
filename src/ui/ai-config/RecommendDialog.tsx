@@ -51,6 +51,7 @@ import type { RecMenuOption } from './RecMenu';
 import { canSyncTest, listModels, runSelfTest } from '../../adapters/ai-models/client';
 import { formatFxHint } from '../../core/fx';
 import { DEFAULT_CONTEXT_WINDOW } from '../create/context-budget';
+import { knownContextFor } from '../../core/model-meta';
 import { useUsdCny } from './use-usd-cny';
 import { describeError } from '../format';
 
@@ -67,7 +68,24 @@ const ONE_MILLION = 1_048_576;
  * - 生图 / 视频 / 音频模型不涉及长上下文，不勾；
  * - 名录里本来就写了窗口的（如 kimi）用它自己那个。
  */
+/** 勾选判据：声明的窗口大于应用默认的 128k */
+function isLongContext(model: DraftModel): boolean {
+  return typeof model.contextLength === 'number' && model.contextLength > DEFAULT_CONTEXT_WINDOW;
+}
+
+/** 按钮上的文字：1M / 512k / 200k / 128k */
+function formatContext(size: number | undefined): string {
+  const value = typeof size === 'number' && size > 0 ? size : DEFAULT_CONTEXT_WINDOW;
+  if (value >= 1_000_000) return '1M';
+  return `${Math.round(value / 1000)}k`;
+}
+
 function defaultContextFor(modelId: string): number | undefined {
+  // ① 名录里有真实值就用真实值（glm-4.7-flash 200k / MiniMax-M3 512k 这类，
+  //    一律按 1M 猜会乐观 5 倍）
+  const known = knownContextFor(modelId);
+  if (known) return known;
+  // ② 名录没有：文本模型先按 1M 声明（用户可取消 = 明确 128k）
   const tag = presetTagById(modelId);
   if (!tag) return undefined;
   if (tag.caps.includes('text')) return ONE_MILLION;
@@ -325,7 +343,7 @@ export function recommendedGroups(): DraftGroup[] {
       baseUrl: 'https://xn--ai-xg4e312c.com',
       keys: [
         newKey(['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'], 'openai', '0.1', 'relay'),
-        newKey(['gemini-4-carbon'], 'openai', '0.3', 'relay'),
+        newKey(['gemini-4-argon'], 'openai', '0.3', 'relay'),
         newKey(['claude-opus-5-5'], 'anthropic', '1.1', 'relay'),
       ],
     },
@@ -686,17 +704,16 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     );
   }
 
-  /** 「1M」开关：勾上写 1048576，取消就清掉（回到应用的 128k 默认） */
+  /**
+   * 长上下文开关：勾上 = 用这条模型的真实窗口（名录有就照抄，没有就按 1M 声明），
+   * 取消 = 明确写 128k（不是"未声明"，这样数据上能区分"我确认过"和"我还没管"）。
+   */
   function toggleModelContext(groupId: string, keyId: string, modelRowId: string): void {
     updateKey(groupId, keyId, (key) => ({
       ...key,
       models: key.models.map((model) =>
         model.id === modelRowId
-          ? {
-              ...model,
-              contextLength:
-                model.contextLength === ONE_MILLION ? DEFAULT_CONTEXT_WINDOW : ONE_MILLION,
-            }
+          ? { ...model, contextLength: isLongContext(model) ? DEFAULT_CONTEXT_WINDOW : defaultContextFor(model.modelId) ?? ONE_MILLION }
           : model,
       ),
     }));
@@ -1261,14 +1278,18 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                         */}
                         <button
                           type="button"
-                          className={`ai-rec-ctx${model.contextLength === ONE_MILLION ? ' is-on' : ''}`}
-                          aria-pressed={model.contextLength === ONE_MILLION}
+                          className={`ai-rec-ctx${isLongContext(model) ? ' is-on' : ''}`}
+                          aria-pressed={isLongContext(model)}
                           aria-label={`1M 上下文 ${groupIndex + 1}-${keyIndex + 1}`}
-                          title="这条模型支持 1M 上下文时勾上；不勾就按应用默认 128k 估算"
+                          title={
+                            isLongContext(model)
+                              ? `按 ${formatContext(model.contextLength)} 算会话预算（名录里的真实窗口）；点一下改成 128k`
+                              : '这条模型支持更长上下文时勾上；不勾按 128k 估算'
+                          }
                           onClick={() => toggleModelContext(group.id, key.id, model.id)}
                         >
-                          <i aria-hidden="true">{model.contextLength === ONE_MILLION ? '✓' : ''}</i>
-                          1M
+                          <i aria-hidden="true">{isLongContext(model) ? '✓' : ''}</i>
+                          {formatContext(model.contextLength)}
                         </button>
                         {/* 逐个模型测：一个 Key 下有几个模型时，只测第一个测不出后面写错的那个 */}
                         <span

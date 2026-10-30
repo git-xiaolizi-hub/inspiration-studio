@@ -30,7 +30,8 @@
     "test:backup": "vitest run src/core/backup",
     "test:asr": "vitest run src/adapters/asr src/workers/asr-worker-core.test.ts src/ui/components/asr-ui.test.tsx",
     "test:workflow": "vitest run src/ui/workflow",
-    "model:whisper": "node scripts/fetch-whisper-model.mjs"
+    "model:whisper": "node scripts/fetch-whisper-model.mjs",
+    "sync:models": "node scripts/sync-model-meta.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",

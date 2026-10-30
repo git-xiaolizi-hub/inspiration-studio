@@ -884,7 +884,7 @@ describe('E. 组头注册链接 + 模型行的「1M」声明', () => {
     const saved = await loadCatalog();
     const first = saved.providers.find((provider) => provider.id === 'deepseek')?.connections[0]?.models[0];
     expect(first?.modelId).toBe('deepseek-flash');
-    expect(first?.contextLength).toBe(1048576);
+    expect(first?.contextLength).toBe(1000000); // 名录里 deepseek-flash 的真实窗口
 
     // 再打开：仍是勾着
     await openRecommend(false);

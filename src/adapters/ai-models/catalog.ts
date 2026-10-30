@@ -881,7 +881,7 @@ export const PRESET_TAGS: Record<PresetGroup, readonly PresetTag[]> = {
       modelId: 'gemini-4-carbon',
       contextLength: 1048576,
       caps: ['text', 'vision'],
-      note: '需中转 · 有限范围内发布；实测写作第一，但现阶段多数账号还用不了',
+      note: '需中转 · **尚未正式发布**，现阶段用户还用不了；等开放后可直接用',
       price: null,
       priceStatus: '未核实',
     },
