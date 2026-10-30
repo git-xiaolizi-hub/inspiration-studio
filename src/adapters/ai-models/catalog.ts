@@ -1765,6 +1765,8 @@ export interface VideoModelRef {
   /** 这条模型属于哪条连接（同一厂商多把 Key 时，key/地址必须取这条的） */
   connectionId: string;
   modelId: string;
+  /** 用户声明的上下文窗口（token）；没声明就是 undefined（界面按 128k 处理） */
+  contextLength?: number;
   displayName: string;
   usable: boolean;
 }
@@ -1792,6 +1794,9 @@ export function listModelsByCap(catalog: AICatalog, cap: ModelCap): VideoModelRe
           providerName: provider.name,
           connectionId: connection.id,
           modelId,
+          ...(typeof model.contextLength === 'number' && model.contextLength > 0
+            ? { contextLength: model.contextLength }
+            : {}),
           displayName: model.displayName || modelId,
           usable: true,
         });

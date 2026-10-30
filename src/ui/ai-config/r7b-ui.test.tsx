@@ -853,3 +853,52 @@ describe('D. 一个入口：载入已有配置 / 推荐置顶 / 拖拽顺序 / �
     expect(linghui?.connections ?? []).toHaveLength(0);
   });
 });
+
+describe('E. 组头注册链接 + 模型行的「1M」声明', () => {
+  it('注册链接跟着各自的组走，顶部不再堆一排', async () => {
+    await mountCard();
+    await openRecommend();
+    // 顶部那排「去注册 …」已经不在了
+    expect(q('.ai-regs')).toBeNull();
+    // 三组各自的组头里各有一条
+    const links = qa<HTMLAnchorElement>('.ai-rec-group-links a');
+    expect(links.length).toBe(3);
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      expect.stringContaining('platform.deepseek.com'),
+      expect.stringContaining('console.volcengine.com'),
+      expect.stringContaining('xn--ai-xg4e312c'),
+    ]);
+  });
+
+  it('勾上 1M 会写进配置；再打开仍是勾着的，取消勾就清掉', async () => {
+    await mountCard();
+    await openRecommend();
+    const toggle = byLabel<HTMLButtonElement>('1M 上下文 1-1') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    await click(toggle);
+    expect(byLabel('1M 上下文 1-1')?.getAttribute('aria-pressed')).toBe('true');
+
+    await setValue(byLabel<HTMLInputElement>('API Key 1-1') as HTMLInputElement, 'sk-deepseek');
+    await click(q('[data-testid="ai-recommend-save"]'));
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+
+    const saved = await loadCatalog();
+    const deepseek = saved.providers.find((provider) => provider.id === 'deepseek');
+    const model = deepseek?.connections[0]?.models[0];
+    expect(model?.modelId).toBe('deepseek-flash');
+    expect(model?.contextLength).toBe(1048576);
+
+    // 再打开：回填成勾选状态
+    await openRecommend(false);
+    const again = byLabel<HTMLButtonElement>('1M 上下文 1-1') as HTMLButtonElement;
+    expect(again.getAttribute('aria-pressed')).toBe('true');
+
+    // 取消勾 + 保存 → 清掉（回到 128k 默认）
+    await click(again);
+    await click(q('[data-testid="ai-recommend-save"]'));
+    await waitFor(() => q('.ai-rec-key') === null, '保存后关闭');
+    const after = await loadCatalog();
+    expect(after.providers.find((p) => p.id === 'deepseek')?.connections[0]?.models[0]?.contextLength)
+      .toBeUndefined();
+  });
+});

@@ -4510,6 +4510,61 @@ input[type='date'] {
 .ai-rec-grip:hover { opacity: 1; }
 
 .ai-rec-group.is-dragging { opacity: 0.5; }
+/* 组头右侧的注册链接（一个组可以有多条：厂商注册页 + 中转站邀请码） */
+.ai-rec-group-links {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.ai-rec-signup {
+  color: var(--fg-3);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--border-strong);
+  padding-bottom: 1px;
+}
+
+.ai-rec-signup:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* 模型行上的「1M」勾选：勾上是实心，没勾是空心 */
+.ai-rec-ctx {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-3);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.ai-rec-ctx i {
+  width: 11px;
+  height: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  font-size: 9px;
+  font-style: normal;
+}
+
+.ai-rec-ctx.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ai-rec-ctx.is-on i {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
 .ai-rec-tag {
   padding: 1px 6px;
   border: 1px solid var(--border);

@@ -55,11 +55,16 @@ import { describeError } from '../format';
 /** 厂商下拉里「自定义」的取值（内置厂商 id 之外的那一格） */
 const CUSTOM = 'custom';
 
+/** 勾「1M」时写进 ModelEntry.contextLength 的值 */
+const ONE_MILLION = 1_048_576;
+
 type VendorChoice = BuiltinProviderId | typeof CUSTOM;
 
 interface DraftModel {
   id: string;
   modelId: string;
+  /** 只有开了「1M」才有值；没开就按应用的 128k 默认 */
+  contextLength?: number;
 }
 
 interface DraftKey {
@@ -170,8 +175,8 @@ function collectModeMultipliers(
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
-function newModel(modelId: string): DraftModel {
-  return { id: makeId('dm'), modelId };
+function newModel(modelId: string, contextLength?: number): DraftModel {
+  return { id: makeId('dm'), modelId, ...(contextLength ? { contextLength } : {}) };
 }
 
 function newKey(
@@ -213,6 +218,9 @@ function keyFromConnection(connection: Connection): DraftKey {
     models: (connection.models.length > 0 ? connection.models : [{ modelId: '' }]).map((model) => ({
       id: makeId('dm'),
       modelId: model.modelId,
+      ...('contextLength' in model && typeof model.contextLength === 'number'
+        ? { contextLength: model.contextLength }
+        : {}),
     })),
   };
 }
@@ -403,7 +411,7 @@ function providerLike(group: DraftGroup, providerId?: string) {
 }
 
 /** 某个模型 id 在厂商预设里的定义（名字 / 能力 / 价格都照抄名录，不编） */
-function entryFor(group: DraftGroup, modelId: string): ModelEntry {
+function entryFor(group: DraftGroup, modelId: string, contextLength?: number): ModelEntry {
   const id = modelId.trim();
   const tag = presetTagsFor(providerLike(group)).find((item) => item.modelId === id);
   if (tag) {
@@ -411,7 +419,8 @@ function entryFor(group: DraftGroup, modelId: string): ModelEntry {
       id: makeId('model'),
       displayName: tag.label,
       modelId: id,
-      contextLength: tag.contextLength,
+      // 用户在模型行上勾了「1M」就以勾选为准（模型支持但接口不声明时，默认只按 128k 算）
+      contextLength: contextLength ?? tag.contextLength,
       caps: [...tag.caps],
       note: tag.note,
       price: tag.price,
@@ -424,6 +433,7 @@ function entryFor(group: DraftGroup, modelId: string): ModelEntry {
     id: makeId('model'),
     displayName: id,
     modelId: id,
+    contextLength,
     caps: ['text'],
     note: '手填的模型名：能力请到 AI 配置页勾选',
     price: null,
@@ -659,6 +669,18 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     );
   }
 
+  /** 「1M」开关：勾上写 1048576，取消就清掉（回到应用的 128k 默认） */
+  function toggleModelContext(groupId: string, keyId: string, modelRowId: string): void {
+    updateKey(groupId, keyId, (key) => ({
+      ...key,
+      models: key.models.map((model) =>
+        model.id === modelRowId
+          ? { ...model, contextLength: model.contextLength === ONE_MILLION ? undefined : ONE_MILLION }
+          : model,
+      ),
+    }));
+  }
+
   function setModel(groupId: string, keyId: string, modelRowId: string, modelId: string): void {
     updateKey(groupId, keyId, (key) => ({
       ...key,
@@ -741,7 +763,29 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
         const baseUrl = group.baseUrl.trim();
         // 空着的 Key 只要本来就在库里，就当「保留」（用户可能只想改模型/倍率）
         for (const key of group.keys) {
-          if (key.apiKey.trim() === '' && key.connectionId) kept.add(key.connectionId);
+          if (key.apiKey.trim() !== '' || !key.connectionId) continue;
+          // Key 空着 = 用户只想改模型 / 倍率 / 协议：保留原 Key，其余照草稿写回
+          kept.add(key.connectionId);
+          const owner = catalog.providers.find((provider) =>
+            provider.connections.some((connection) => connection.id === key.connectionId),
+          );
+          const connection = owner?.connections.find((item) => item.id === key.connectionId);
+          if (!owner || !connection) continue;
+          const wantedHere = key.models
+            .map((model) => entryFor(group, model.modelId, model.contextLength))
+            .filter(isRealModel);
+          const merged = connection.models.map(
+            (model) => wantedHere.find((item) => item.modelId === model.modelId) ?? model,
+          );
+          const known = new Set(connection.models.map((model) => model.modelId));
+          catalog = updateConnection(catalog, owner.id, connection.id, {
+            baseUrl: baseUrl,
+            protocol: key.protocol,
+            multiplier: multiplierOfText(key.multiplier),
+            billingMode: key.billingMode,
+            modeMultipliers: collectModeMultipliers(key),
+            models: [...merged, ...wantedHere.filter((item) => !known.has(item.modelId))],
+          });
         }
         if (baseUrl === '') continue;
         const filled = group.keys.filter((key) => key.apiKey.trim() !== '');
@@ -773,7 +817,7 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
             multiplier: multiplierOfText(filled[0].multiplier),
             billingMode: filled[0].billingMode,
             modeMultipliers: collectModeMultipliers(filled[0]),
-            models: filled[0].models.map((model) => entryFor(group, model.modelId)).filter(isRealModel),
+            models: filled[0].models.map((model) => entryFor(group, model.modelId, model.contextLength)).filter(isRealModel),
           });
           kept.add(first.id);
           pending = filled.slice(1);
@@ -836,13 +880,23 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
     }
   }
 
-  const deepseekGuide = GUIDE_VENDORS.find((vendor) => vendor.name === 'DeepSeek');
-  const arkGuide = GUIDE_VENDORS.find((vendor) => vendor.baseUrl.startsWith('https://ark.'));
-  const links = [
-    { label: '去注册 DeepSeek API ↗', url: registrationUrl(deepseekGuide?.keyUrl) },
-    { label: '去注册火山引擎（豆包）↗', url: registrationUrl(arkGuide?.keyUrl) },
-    { label: '灵绘中转站（含邀请码）↗', url: LINGHUI_SIGNUP_URL },
-  ].filter((item): item is { label: string; url: string } => item.url !== null);
+  const linksForGroup = useCallback((group: DraftGroup): Array<{ label: string; url: string; title: string }> => {
+    const out: Array<{ label: string; url: string; title: string }> = [];
+    const push = (label: string, raw: string | undefined, title: string) => {
+      const url = registrationUrl(raw);
+      if (url) out.push({ label, url, title });
+    };
+    const vendor = group.vendor === '' ? '' : group.vendor;
+    if (vendor === 'linghui') {
+      out.push({ label: '灵绘中转站（含邀请码）↗', url: LINGHUI_SIGNUP_URL, title: '去灵绘中转站注册，含邀请码' });
+    }
+    const guide = vendor === 'linghui' ? undefined : GUIDE_VENDORS.find((item) => {
+      if (vendor === '') return item.baseUrl.startsWith(normalizeUrl(group.baseUrl));
+      return item.baseUrl.startsWith(VENDOR_META[vendor as BuiltinProviderId]?.baseUrl ?? '#');
+    });
+    if (guide) push(`去注册 ${guide.name} ↗`, guide.keyUrl, `${guide.name} 的 API Key 注册页`);
+    return out;
+  }, []);
 
   return (
     <Dialog
@@ -878,13 +932,6 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
         <li><b>gemini</b>：更好的智力，更强的写作</li>
         <li><b>opus</b>：更好的智力，提示词设计、代码做视频</li>
       </ul>
-      <div className="ai-regs">
-        {links.map((link) => (
-          <a key={link.label} href={link.url} target="_blank" rel="noreferrer">
-            {link.label}
-          </a>
-        ))}
-      </div>
 
       {error && <p className="error small">{error}</p>}
 
@@ -929,6 +976,22 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
               <span className="ai-rec-dot" aria-hidden="true" />
               {group.title ?? vendorNameOf(group)}
               {group.existingConnectionId ? <span className="ai-rec-tag">已配置</span> : null}
+              {linksForGroup(group).length > 0 ? (
+                <span className="ai-rec-group-links">
+                  {linksForGroup(group).map((link) => (
+                    <a
+                      key={link.url}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ai-rec-signup"
+                      title={link.title}
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                </span>
+              ) : null}
             </div>
 
             {/* 第一层：base_url + 厂商 */}
@@ -1167,6 +1230,21 @@ export function RecommendDialog({ open, onClose, onSaved }: Props) {
                             <option key={modelId} value={modelId} />
                           ))}
                         </datalist>
+                        {/*
+                          1M：模型本身支持，但大多数 OpenAI 兼容接口默认只按 128k 算。
+                          勾上 = 在配置里声明这条模型的上下文窗口是 1M，生成页的长文会话才不会被过早判定「太长」。
+                        */}
+                        <button
+                          type="button"
+                          className={`ai-rec-ctx${model.contextLength === ONE_MILLION ? ' is-on' : ''}`}
+                          aria-pressed={model.contextLength === ONE_MILLION}
+                          aria-label={`1M 上下文 ${groupIndex + 1}-${keyIndex + 1}`}
+                          title="这条模型支持 1M 上下文时勾上；不勾就按应用默认 128k 估算"
+                          onClick={() => toggleModelContext(group.id, key.id, model.id)}
+                        >
+                          <i aria-hidden="true">{model.contextLength === ONE_MILLION ? '✓' : ''}</i>
+                          1M
+                        </button>
                         {/* 逐个模型测：一个 Key 下有几个模型时，只测第一个测不出后面写错的那个 */}
                         <span
                           className={`ai-rec-model-flag is-${probe?.status ?? 'idle'}`}
@@ -1280,14 +1358,21 @@ function appendKey(
   group: DraftGroup,
   key: DraftKey,
 ): { catalog: AICatalog; connectionId: string } {
-  const wanted = key.models.map((model) => entryFor(group, model.modelId)).filter(isRealModel);
+  const wanted = key.models.map((model) => entryFor(group, model.modelId, model.contextLength)).filter(isRealModel);
   const provider = catalog.providers.find((item) => item.id === providerId);
   const sameUrl = normalizeUrl(group.baseUrl);
   const apiKey = key.apiKey.trim();
 
+  /**
+   * 合并模型表：**同 modelId 以草稿为准**（否则改「1M」/改名都不会落库），
+   * 库里多出来的模型原样保留（不清空用户以前配的）。
+   */
   const mergedModels = (base: ModelEntry[]): ModelEntry[] => {
+    const merged = base.map(
+      (model) => wanted.find((item) => item.modelId === model.modelId) ?? model,
+    );
     const known = new Set(base.map((model) => model.modelId));
-    return [...base, ...wanted.filter((model) => !known.has(model.modelId))];
+    return [...merged, ...wanted.filter((model) => !known.has(model.modelId))];
   };
 
   // ① 回填行：改它自己那条（Key 被用户改过也照样改这条，而不是新建）

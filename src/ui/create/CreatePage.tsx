@@ -485,9 +485,18 @@ export function CreatePage({
     () => estimateConversationTokens(threadSystemText, threadTurns),
     [threadSystemText, threadTurns],
   );
+  /**
+   * 窗口从哪来：调用方传的 `contextWindow` 优先（测试/嵌入用），
+   * 否则用**当前文本模型自己声明的上下文**（配置页模型行的「1M」勾选），
+   * 都没有才回落到 128k。模型支持 1M 但没勾，就只按 128k 估。
+   */
   const contextState = useMemo(
-    () => contextBudget(threadTokens, contextWindow ?? DEFAULT_CONTEXT_WINDOW),
-    [threadTokens, contextWindow],
+    () =>
+      contextBudget(
+        threadTokens,
+        contextWindow ?? currentTextModel?.contextLength ?? DEFAULT_CONTEXT_WINDOW,
+      ),
+    [threadTokens, contextWindow, currentTextModel?.contextLength],
   );
 
   /* ---------------------------------------------------------------- */
